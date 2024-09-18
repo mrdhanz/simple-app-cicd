@@ -78,7 +78,7 @@ resource "kubernetes_service" "simple_app_be" {
 
     port {
       port        = var.public_port
-      target_port = 80
+      target_port = 3132
     }
 
     type = "LoadBalancer"
