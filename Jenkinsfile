@@ -50,6 +50,8 @@ pipeline {
                         def dockerImage = repo.docker_image
                         def dockerFile = repo.docker_file
                         def environment = repo.env
+                        def publicPort = repo.env.PORT
+                        def terraformFile = repo.terraform_file
 
                         // Use 'dir' to isolate each repository workspace
                         dir(repoName) {
@@ -69,11 +71,13 @@ pipeline {
                                         // Pull the latest changes from the remote repository
                                         echo "Changes detected in ${repoName}, pulling the latest changes."
                                         sh "git pull origin ${repoBranch}"
+                                        env."${repoName}_HAS_CHANGES" = 'true'
                                     } else {
                                         hasChanges = '0'
                                     }
                                 }
                             } else {
+                                echo "Cloning repository: ${repoName}"
                                 git branch: repoBranch, url: repoUrl, credentialsId: 'Git'
                                 hasChanges = '1'
                             }
@@ -112,6 +116,34 @@ pipeline {
                                             }
                                         }
                                     }
+                                    stage("Deploying ${repoName}") {
+                                        script {
+                                            // Deploy the application to Kubernetes
+                                            echo "Deploying ${repoName} to Kubernetes using Terraform"
+                                            // Use 'dir' to isolate each repository workspace
+                                            dir(repoName) {
+                                                // Copy main.tf to the repository directory
+                                                sh "cp ../${terraformFile} main.tf"
+                                                // Check if terraform has init or not
+                                                if (!fileExists('.terraform')) {
+                                                    sh "terraform init"
+                                                }
+                                                echo "Deploying to Kubernetes for repository: ${repoName}"
+                                                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                                                    sh """
+                                                        terraform workspace select -or-create=true ${repoName}
+                                                        terraform apply -auto-approve \
+                                                        -var 'app_name=${repoName}' \
+                                                        -var 'namespace_name=${repoName}' \
+                                                        -var 'public_port=${publicPort}' \
+                                                        -var 'docker_image=${dockerImage}:${env.BUILD_ID}' \
+                                                        -var 'build_number=${env.BUILD_ID}' \
+                                                        --lock=false
+                                                    """
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             } else {
                                 echo "No changes detected in ${repoName}, skipping build."
@@ -128,46 +160,6 @@ pipeline {
 
                     // Set the environment variable to indicate if any repo had changes
                     env.ANY_REPO_HAS_CHANGES = anyRepoHasChanges.toString()
-                }
-            }
-        }
-
-        stage('Deploy to Kubernetes using Terraform') {
-            when {
-                not { equals expected: true, actual: params.DESTROY }
-                expression { return env.ANY_REPO_HAS_CHANGES == 'true' }
-            }
-            steps {
-                script {
-                    // Read the JSON file
-                    def jsonText = readFile(file: REPO_JSON_FILE)
-                    def repos = readJSON text: jsonText
-
-                    // Loop through each repository
-                    for (repo in repos) {
-                        def repoName = repo.name
-                        def dockerImage = repo.docker_image
-                        def publicPort = repo.env.PORT
-                        def terraformFile = repo.terraform_file
-                        // Use 'dir' to isolate each repository workspace
-                        dir(repoName) {
-                            // Copy main.tf to the repository directory
-                            sh "cp ../${terraformFile} main.tf"
-                            echo "Deploying to Kubernetes for repository: ${repoName}"
-                            withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                                sh """
-                                    terraform init
-                                    terraform workspace select -or-create=true ${repoName}
-                                    terraform apply -auto-approve \
-                                    -var 'app_name=${repoName}' \
-                                    -var 'namespace_name=${repoName}' \
-                                    -var 'public_port=${publicPort}' \
-                                    -var 'docker_image=${dockerImage}:${env.BUILD_ID}' \
-                                    -var 'build_number=${env.BUILD_ID}'
-                                """
-                            }
-                        }
-                    }
                 }
             }
         }
