@@ -49,6 +49,7 @@ pipeline {
                         def buildCommand = repo.build_command
                         def dockerImage = repo.docker_image
                         def dockerFile = repo.docker_file
+                        def environment = repo.env
 
                         // Use 'dir' to isolate each repository workspace
                         dir(repoName) {
@@ -67,30 +68,31 @@ pipeline {
                                 anyRepoHasChanges = true // Set flag to true if any repo has changes
                                 parallelStages[repoName] = {
                                     stage("Building ${repoName}") {
-                                        steps {
-                                            script {
-                                                // parse repo.env. for withEnv
-                                                def envVars = repo.env.collect { key, value -> "${key}=${value}" }
-                                                withEnv(envVars) {
-                                                    // Build steps for the repository
-                                                    dir(repoName) {
-                                                        // Install dependencies and build the project
-                                                        echo "Installing dependencies for ${repoName}"
-                                                        sh "${installCommand}"
-                                                        echo "Building project for ${repoName}"
-                                                        sh "${buildCommand}"
-                                                        echo "Building Docker image for ${repoName}"
-                                                        // Docker build using the current directory context
-                                                        sh "docker build -t ${dockerImage}:${env.BUILD_ID} -f ${dockerFile} ."
+                                        script {
+                                            // parse repo.env. for withEnv
+                                            def envVars = []
+                                            if(environment != null) {
+                                                environment.collect { key, value -> "${key}=${value}" }
+                                            }
+                                            withEnv(envVars) {
+                                                // Build steps for the repository
+                                                dir(repoName) {
+                                                    // Install dependencies and build the project
+                                                    echo "Installing dependencies for ${repoName}"
+                                                    sh "${installCommand}"
+                                                    echo "Building project for ${repoName}"
+                                                    sh "${buildCommand}"
+                                                    echo "Building Docker image for ${repoName}"
+                                                    // Docker build using the current directory context
+                                                    sh "docker build -t ${dockerImage}:${env.BUILD_ID} -f ${dockerFile} ."
 
-                                                        // Docker login and push the image
-                                                        withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
-                                                            echo "Pushing Docker image for ${repoName}"
-                                                            sh "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin"
-                                                            sh "docker push ${dockerImage}:${env.BUILD_ID}"
-                                                            // remove the image from the local machine after pushing it to the registry
-                                                            sh "docker rmi ${dockerImage}:${env.BUILD_ID}"
-                                                        }
+                                                    // Docker login and push the image
+                                                    withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+                                                        echo "Pushing Docker image for ${repoName}"
+                                                        sh "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin"
+                                                        sh "docker push ${dockerImage}:${env.BUILD_ID}"
+                                                        // remove the image from the local machine after pushing it to the registry
+                                                        sh "docker rmi ${dockerImage}:${env.BUILD_ID}"
                                                     }
                                                 }
                                             }
