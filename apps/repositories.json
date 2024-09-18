@@ -1,0 +1,30 @@
+[
+    {
+        "name": "simple-app-fe",
+        "url": "https://github.com/mrdhanz/simple-app-fe.git",
+        "branch": "master",
+        "docker_image": "mrdhanz/simple-app-fe",
+        "docker_file": "Dockerfile",
+        "install_command": "npm install",
+        "build_command": "GENERATE_SOURCEMAP=false npm run build",
+        "env": {
+            "PORT": "3000",
+            "REACT_APP_API_URL": "http://localhost:3001",
+            "REACT_APP_CLIENT_ID": "client-01"
+        }
+    },
+    {
+        "name": "simple-app-be",
+        "url": "https://github.com/mrdhanz/simple-app-be.git",
+        "branch": "master",
+        "docker_image": "mrdhanz/simple-app-be",
+        "docker_file": "Dockerfile",
+        "install_command": "npm install",
+        "build_command": "npm run build",
+        "env": {
+            "PORT": "3001",
+            "CLIENT_ID": "client-01",
+            "CLIENT_SECRET": "secret123"
+        }
+    }
+]
