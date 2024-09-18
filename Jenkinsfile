@@ -56,11 +56,9 @@ pipeline {
                             // Checkout the repository
                             def hasChanges = '0'
                             if (fileExists('.git')) {
-                                withCredentials([usernamePassword(credentialsId: 'Git', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
-                                    // Build the URL with credentials for the fetch
-                                    def repoWithCredentials = "https://${GIT_USERNAME}:${GIT_PASSWORD}@${repoUrl.split('//')[1]}"
+                                withCredentials([gitUsernamePassword(credentialsId: 'Git', gitToolName: 'Default')]) {
                                     // Fetch the latest changes from the remote repository
-                                    sh "git fetch ${repoWithCredentials} ${repoBranch}"
+                                    sh "git fetch origin ${repoBranch}"
                                     // Get the local and remote commit hashes
                                     def localCommit = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
                                     def remoteCommit = sh(script: "git rev-parse origin/${repoBranch}", returnStdout: true).trim()
@@ -70,7 +68,7 @@ pipeline {
                                         hasChanges = '1'
                                         // Pull the latest changes from the remote repository
                                         echo "Changes detected in ${repoName}, pulling the latest changes."
-                                        git branch: repoBranch, url: repoUrl, credentialsId: 'Git'
+                                        sh "git pull origin ${repoBranch}"
                                     } else {
                                         hasChanges = '0'
                                     }
