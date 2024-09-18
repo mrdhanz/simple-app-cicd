@@ -56,25 +56,25 @@ pipeline {
                             // Checkout the repository
                             def hasChanges = '0'
                             if (fileExists('.git')) {
-                                withCredentials([file(credentialsId: 'git-credentials', variable: 'GIT_CREDENTIALS')]) {
-                                    // Set the git credentials for the repository
-                                    sh "git config credential.helper 'store --file=.git/credentials'"
-                                    sh "echo ${GIT_CREDENTIALS} > .git/credentials"
-                                }
-                                // Fetch the latest changes from the remote repository
-                                sh "git fetch origin ${repoBranch}"
-                                // Get the local and remote commit hashes
-                                def localCommit = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
-                                def remoteCommit = sh(script: "git rev-parse origin/${repoBranch}", returnStdout: true).trim()
+                                withCredentials([usernamePassword(credentialsId: 'Git', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
+                                    // Build the URL with credentials for the fetch
+                                    def repoWithCredentials = "https://${GIT_USERNAME}:${GIT_PASSWORD}@${repoUrl.split('//')[1]}"
+                                    // Fetch the latest changes from the remote repository
+                                    sh "git fetch ${repoWithCredentials} ${repoBranch}"
+                                    // Get the local and remote commit hashes
+                                    def localCommit = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                                    def remoteCommit = sh(script: "git rev-parse origin/${repoBranch}", returnStdout: true).trim()
 
-                                // Compare commit hashes and set hasChange flag
-                                if (localCommit != remoteCommit) {
-                                    hasChanges = '1'
-                                    sh "git pull origin ${repoBranch}"
-                                } else {
-                                    hasChanges = '0'
+                                    // Compare commit hashes and set hasChange flag
+                                    if (localCommit != remoteCommit) {
+                                        hasChanges = '1'
+                                        // Pull the latest changes from the remote repository
+                                        echo "Changes detected in ${repoName}, pulling the latest changes."
+                                        git branch: repoBranch, url: repoUrl, credentialsId: 'Git'
+                                    } else {
+                                        hasChanges = '0'
+                                    }
                                 }
-                                sh "rm -f .git/credentials"
                             } else {
                                 git branch: repoBranch, url: repoUrl, credentialsId: 'Git'
                                 hasChanges = '1'
