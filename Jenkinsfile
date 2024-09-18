@@ -56,6 +56,11 @@ pipeline {
                             // Checkout the repository
                             def hasChanges = '0'
                             if (fileExists('.git')) {
+                                withCredentials([file(credentialsId: 'git-credentials', variable: 'GIT_CREDENTIALS')]) {
+                                    // Set the git credentials for the repository
+                                    sh "git config credential.helper 'store --file=.git/credentials'"
+                                    sh "echo ${GIT_CREDENTIALS} > .git/credentials"
+                                }
                                 // Fetch the latest changes from the remote repository
                                 sh "git fetch origin ${repoBranch}"
                                 // Get the local and remote commit hashes
@@ -69,6 +74,7 @@ pipeline {
                                 } else {
                                     hasChanges = '0'
                                 }
+                                sh "rm -f .git/credentials"
                             } else {
                                 git branch: repoBranch, url: repoUrl, credentialsId: 'Git'
                                 hasChanges = '1'
