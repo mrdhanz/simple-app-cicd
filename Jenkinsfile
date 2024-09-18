@@ -91,8 +91,6 @@ pipeline {
                                                         echo "Pushing Docker image for ${repoName}"
                                                         sh "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin"
                                                         sh "docker push ${dockerImage}:${env.BUILD_ID}"
-                                                        // remove the image from the local machine after pushing it to the registry
-                                                        sh "docker rmi ${dockerImage}:${env.BUILD_ID}"
                                                     }
                                                 }
                                             }
