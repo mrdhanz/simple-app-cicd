@@ -53,49 +53,52 @@ pipeline {
                         // Use 'dir' to isolate each repository workspace
                         dir(repoName) {
                             // Checkout the repository
-                            git branch: repoBranch, url: repoUrl, credentialsId: 'Git'
-                            withCredentials([file(credentialsId: 'Git')]) {
+                            def hasChanges = '0'
+                            if (fileExists('.git')) {
                                 // Check if there are new commits since the last build
-                                def hasChanges = sh(script: "git rev-list HEAD ^origin/${repoBranch} --count", returnStdout: true).trim()
+                                hasChanges = sh(script: "git rev-list HEAD ^origin/${repoBranch} --count", returnStdout: true).trim()
+                            } else {
+                                git branch: repoBranch, url: repoUrl, credentialsId: 'Git'
+                                hasChanges = '1'
+                            }
 
-                                // If changes are found, add the repository build to the parallel stages
-                                if (hasChanges != '0') {
-                                    anyRepoHasChanges = true // Set flag to true if any repo has changes
-                                    parallelStages[repoName] = {
-                                        stage("Building ${repoName}") {
-                                            steps {
-                                                script {
-                                                    // parse repo.env. for withEnv
-                                                    def envVars = repo.env.collect { key, value -> "${key}=${value}" }
-                                                    withEnv(envVars) {
-                                                        // Build steps for the repository
-                                                        dir(repoName) {
-                                                            // Install dependencies and build the project
-                                                            echo "Installing dependencies for ${repoName}"
-                                                            sh "${installCommand}"
-                                                            echo "Building project for ${repoName}"
-                                                            sh "${buildCommand}"
-                                                            echo "Building Docker image for ${repoName}"
-                                                            // Docker build using the current directory context
-                                                            sh "docker build -t ${dockerImage}:${env.BUILD_ID} -f ${dockerFile} ."
+                            // If changes are found, add the repository build to the parallel stages
+                            if (hasChanges != '0') {
+                                anyRepoHasChanges = true // Set flag to true if any repo has changes
+                                parallelStages[repoName] = {
+                                    stage("Building ${repoName}") {
+                                        steps {
+                                            script {
+                                                // parse repo.env. for withEnv
+                                                def envVars = repo.env.collect { key, value -> "${key}=${value}" }
+                                                withEnv(envVars) {
+                                                    // Build steps for the repository
+                                                    dir(repoName) {
+                                                        // Install dependencies and build the project
+                                                        echo "Installing dependencies for ${repoName}"
+                                                        sh "${installCommand}"
+                                                        echo "Building project for ${repoName}"
+                                                        sh "${buildCommand}"
+                                                        echo "Building Docker image for ${repoName}"
+                                                        // Docker build using the current directory context
+                                                        sh "docker build -t ${dockerImage}:${env.BUILD_ID} -f ${dockerFile} ."
 
-                                                            // Docker login and push the image
-                                                            withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
-                                                                echo "Pushing Docker image for ${repoName}"
-                                                                sh "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin"
-                                                                sh "docker push ${dockerImage}:${env.BUILD_ID}"
-                                                                // remove the image from the local machine after pushing it to the registry
-                                                                sh "docker rmi ${dockerImage}:${env.BUILD_ID}"
-                                                            }
+                                                        // Docker login and push the image
+                                                        withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+                                                            echo "Pushing Docker image for ${repoName}"
+                                                            sh "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin"
+                                                            sh "docker push ${dockerImage}:${env.BUILD_ID}"
+                                                            // remove the image from the local machine after pushing it to the registry
+                                                            sh "docker rmi ${dockerImage}:${env.BUILD_ID}"
                                                         }
                                                     }
                                                 }
                                             }
                                         }
                                     }
-                                } else {
-                                    echo "No changes detected in ${repoName}, skipping build."
                                 }
+                            } else {
+                                echo "No changes detected in ${repoName}, skipping build."
                             }
                         }
                     }
