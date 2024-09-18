@@ -23,16 +23,16 @@ provider "kubernetes" {
   config_path = "~/.kube/config"
 }
 
-resource "kubernetes_namespace" "simple_app" {
+resource "kubernetes_namespace" "simple_app_be" {
   metadata {
     name = var.namespace_name
   }
 }
 
-resource "kubernetes_deployment" "simple_app" {
+resource "kubernetes_deployment" "simple_app_be" {
   metadata {
     name      = var.app_name
-    namespace = kubernetes_namespace.simple_app.metadata[0].name
+    namespace = kubernetes_namespace.simple_app_be.metadata[0].name
   }
 
   spec {
@@ -65,10 +65,10 @@ resource "kubernetes_deployment" "simple_app" {
   }
 }
 
-resource "kubernetes_service" "simple_app" {
+resource "kubernetes_service" "simple_app_be" {
   metadata {
     name      = "${var.app_name}-service"
-    namespace = kubernetes_namespace.simple_app.metadata[0].name
+    namespace = kubernetes_namespace.simple_app_be.metadata[0].name
   }
 
   spec {

@@ -128,10 +128,11 @@ pipeline {
                         def repoName = repo.name
                         def dockerImage = repo.docker_image
                         def publicPort = repo.env.PORT
+                        def terraformFile = repo.terraform_file
                         // Use 'dir' to isolate each repository workspace
                         dir(repoName) {
                             // Copy main.tf to the repository directory
-                            sh 'cp ../main.tf .'
+                            sh "cp ../${terraformFile} main.tf"
                             echo "Deploying to Kubernetes for repository: ${repoName}"
                             withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                                 sh """
