@@ -56,8 +56,19 @@ pipeline {
                             // Checkout the repository
                             def hasChanges = '0'
                             if (fileExists('.git')) {
-                                // Check if there are new commits since the last build
-                                hasChanges = sh(script: "git rev-list HEAD ^origin/${repoBranch} --count", returnStdout: true).trim()
+                                // Fetch the latest changes from the remote repository
+                                sh "git fetch origin ${repoBranch}"
+                                // Get the local and remote commit hashes
+                                def localCommit = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                                def remoteCommit = sh(script: "git rev-parse origin/${repoBranch}", returnStdout: true).trim()
+
+                                // Compare commit hashes and set hasChange flag
+                                if (localCommit != remoteCommit) {
+                                    hasChanges = '1'
+                                    sh "git pull origin ${repoBranch}"
+                                } else {
+                                    hasChanges = '0'
+                                }
                             } else {
                                 git branch: repoBranch, url: repoUrl, credentialsId: 'Git'
                                 hasChanges = '1'
@@ -72,7 +83,8 @@ pipeline {
                                             // parse repo.env. for withEnv
                                             def envVars = []
                                             if(environment != null) {
-                                                environment.collect { key, value -> "${key}=${value}" }
+                                                echo "Setting environment variables for ${repoName}"
+                                                envVars = environment.collect { key, value -> "${key}=${value}" }
                                             }
                                             withEnv(envVars) {
                                                 // Build steps for the repository
