@@ -20,13 +20,14 @@
         "branch": "master",
         "docker_image": "mrdhanz/simple-app-be",
         "docker_file": "Dockerfile",
-        "install_command": "npm install",
+        "install_command": "",
         "build_command": "",
         "terraform_file": "terraform/backend-k8s.tf",
         "env": {
             "PORT": "3001",
             "CLIENT_ID": "client-01",
-            "CLIENT_SECRET": "secret123"
+            "CLIENT_SECRET": "secret123",
+            "ENV_FILE": "environment/.env.backend"
         }
     }
 ]

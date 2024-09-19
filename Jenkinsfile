@@ -93,6 +93,9 @@ pipeline {
                                             if(environment != null) {
                                                 echo "Setting environment variables for ${repoName}"
                                                 envVars = environment.collect { key, value -> "${key}=${value}" }
+                                                if(environment.ENV_FILE != null) {
+                                                    sh "cat ${environment.ENV_FILE} >> .env"
+                                                }
                                             }
                                             withEnv(envVars) {
                                                 // Build steps for the repository
