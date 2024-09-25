@@ -57,7 +57,7 @@ resource "kubernetes_deployment" "simple_app_be" {
           name  = var.app_name
 
           port {
-            container_port = 80
+            container_port = 3132
           }
         }
       }
