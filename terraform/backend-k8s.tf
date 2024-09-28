@@ -59,6 +59,17 @@ resource "kubernetes_deployment" "simple_app_be" {
           port {
             container_port = 3132
           }
+
+          resources {
+            requests = {
+              cpu    = "100m"  # Ensure to set a request value
+              memory = "256Mi"
+            }
+            limits = {
+              cpu    = "500m"
+              memory = "1Gi"
+            }
+          }
         }
       }
     }
@@ -80,18 +91,6 @@ resource "kubernetes_horizontal_pod_autoscaler" "simple_app_be" {
       api_version = "apps/v1"
       kind = "Deployment"
       name = kubernetes_deployment.simple_app_be.metadata[0].name
-    }
-
-    metric {
-      type = "Resource"
-
-      resource {
-        name = "cpu"
-        target {
-          type = "Utilization"
-          average_utilization = 80
-        }
-      }
     }
   }
 }
