@@ -86,7 +86,7 @@ pipeline {
                             if (hasChanges != '0') {
                                 anyRepoHasChanges = true // Set flag to true if any repo has changes
                                 parallelStages[repoName] = {
-                                    stage("Building ${repoName} for ${environment.CLIENT_ID}") {
+                                    stage("Building ${repoName}") {
                                         script {
                                             // parse repo.env. for withEnv
                                             def envVars = []
@@ -94,7 +94,7 @@ pipeline {
                                                 echo "Setting environment variables for ${repoName}"
                                                 envVars = environment.collect { key, value -> "${key}=${value}" }
                                                 if(environment.ENV_FILE != null) {
-                                                    sh "cat ../${environment.ENV_FILE} >> .env"
+                                                    writeFile file: '.env', text: envVars.join('\n')
                                                 }
                                             }
                                             withEnv(envVars) {
@@ -119,7 +119,7 @@ pipeline {
                                             }
                                         }
                                     }
-                                    stage("Deploying ${repoName} for ${environment.CLIENT_ID}") {
+                                    stage("Deploying ${repoName}") {
                                         script {
                                             // Deploy the application to Kubernetes
                                             echo "Deploying ${repoName} to Kubernetes using Terraform"
