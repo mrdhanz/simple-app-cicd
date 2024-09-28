@@ -83,7 +83,7 @@ resource "kubernetes_horizontal_pod_autoscaler" "simple_app_fe" {
       name        = kubernetes_deployment.simple_app_fe.metadata[0].name
     }
 
-    metrics {
+    metric {
       type = "Resource"
 
       resource {
