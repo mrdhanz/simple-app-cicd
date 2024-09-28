@@ -36,7 +36,7 @@ resource "kubernetes_deployment" "simple_app_be" {
   }
 
   spec {
-    replicas = 1
+    replicas = 2
     selector {
       match_labels = {
         app = var.app_name
@@ -62,6 +62,24 @@ resource "kubernetes_deployment" "simple_app_be" {
         }
       }
     }
+  }
+}
+
+resource "kubernetes_horizontal_pod_autoscaler_v2beta2" "simple_app_be" {
+  metadata {
+    name      = var.app_name
+    namespace = kubernetes_namespace.simple_app_be.metadata[0].name
+  }
+
+  spec {
+    scale_target_ref {
+      api_version = "apps/v1"
+      kind        = "Deployment"
+      name        = kubernetes_deployment.simple_app_be.metadata[0].name
+    }
+
+    min_replicas = 2  # Minimum of 2 replicas
+    max_replicas = 10  # Set an appropriate maximum based on your needs
   }
 }
 
