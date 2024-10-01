@@ -175,9 +175,7 @@ pipeline {
 
                                                     echo "Service is available at http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
 
-                                                    sh "kubectl run smoke-test --image=busybox --restart=Never --command -- wget http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
-                                                    sh 'kubectl logs smoke-test'
-                                                    sh 'kubectl delete pod smoke-test'
+                                                    sh "curl -X GET http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
                                                 }
                                             }
                                         }
@@ -199,9 +197,7 @@ pipeline {
 
                                                     echo "Service is available at http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
 
-                                                    sh "kubectl run smoke-test --image=busybox --restart=Never --command -- wget http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
-                                                    sh 'kubectl logs smoke-test'
-                                                    sh 'kubectl delete pod smoke-test'
+                                                    sh "curl -X GET http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
                                                 }
                                             }
                                         }
