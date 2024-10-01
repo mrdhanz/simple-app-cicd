@@ -164,7 +164,7 @@ pipeline {
                                             dir(repoName) {
                                                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                                                     // Run tests on Blue environment
-                                                    sh "kubectl run smoke-test --image=busybox --rm -it --restart=Never -- wget -qO- http://${repoName}-blue-service"
+                                                    sh "kubectl run smoke-test --image=busybox --rm --restart=Never -- wget -qO- http://${repoName}-blue-service"
                                                 }
                                             }
                                         }
@@ -177,7 +177,7 @@ pipeline {
                                             dir(repoName) {
                                                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                                                     // Run tests on Green environment
-                                                    sh "kubectl run smoke-test --image=busybox --rm -it --restart=Never -- wget -qO- http://${repoName}-service"
+                                                    sh "kubectl run smoke-test --image=busybox --rm --restart=Never -- wget -qO- http://${repoName}-service"
                                                 }
                                             }
                                         }
