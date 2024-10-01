@@ -164,11 +164,15 @@ pipeline {
                                             dir(repoName) {
                                                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                                                     // Run tests on Blue environment
-                                                    sh """
-                                                        SVC_EXTERNAL_IP=\$(kubectl get svc ${repoName}-blue-service -n ${repoName} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-                                                        SVC_PORT=\$(kubectl get svc ${repoName}-blue-service -n ${repoName} -o jsonpath='{.spec.ports[0].port}')
-                                                        echo "Service is available at http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
-                                                    """
+                                                    def SVC_EXTERNAL_IP = script {
+                                                        return sh(script: "kubectl get svc ${repoName}-blue-service -n ${repoName} -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
+                                                    }
+                                                    def SVC_PORT = script {
+                                                        return sh(script: "kubectl get svc ${repoName}-blue-service -n ${repoName} -o jsonpath='{.spec.ports[0].port}'", returnStdout: true).trim()
+                                                    }
+
+                                                    echo "Service is available at http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
+                                                    
                                                     sh "kubectl run smoke-test --image=busybox --restart=Never --command -- wget http://${SVC_EXTERNAL_IP}:${PORT}"
                                                     sh 'kubectl logs smoke-test'
                                                     sh 'kubectl delete pod smoke-test'
@@ -184,11 +188,15 @@ pipeline {
                                             dir(repoName) {
                                                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                                                     // Run tests on Green environment
-                                                    sh """
-                                                        SVC_EXTERNAL_IP=\$(kubectl get svc ${repoName}-service -n ${repoName} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-                                                        SVC_PORT=\$(kubectl get svc ${repoName}-service -n ${repoName} -o jsonpath='{.spec.ports[0].port}')
-                                                        echo "Service is available at http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
-                                                    """
+                                                    def SVC_EXTERNAL_IP = script {
+                                                        return sh(script: "kubectl get svc ${repoName}-service -n ${repoName} -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
+                                                    }
+                                                    def SVC_PORT = script {
+                                                        return sh(script: "kubectl get svc ${repoName}-service -n ${repoName} -o jsonpath='{.spec.ports[0].port}'", returnStdout: true).trim()
+                                                    }
+
+                                                    echo "Service is available at http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
+
                                                     sh "kubectl run smoke-test --image=busybox --restart=Never --command -- wget http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
                                                     sh 'kubectl logs smoke-test'
                                                     sh 'kubectl delete pod smoke-test'
