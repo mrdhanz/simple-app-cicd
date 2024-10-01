@@ -137,7 +137,7 @@ pipeline {
                                                         -var 'public_port=${publicPort}' \
                                                         -var 'docker_image=${dockerImage}:blue' \
                                                         -var 'build_number=${env.BUILD_ID}' \
-                                                        -var 'version=blue' \
+                                                        -var 'app_version=blue' \
                                                         --lock=false
                                                     """
                                                     echo "Deploying to Kubernetes for repository: ${repoName} on Green"
@@ -149,7 +149,7 @@ pipeline {
                                                         -var 'public_port=${publicPort}' \
                                                         -var 'docker_image=${dockerImage}:green' \
                                                         -var 'build_number=${env.BUILD_ID}' \
-                                                        -var 'version=green' \
+                                                        -var 'app_version=green' \
                                                         --lock=false
                                                     """
                                                 }
@@ -197,7 +197,7 @@ pipeline {
                                                         -var 'public_port=${publicPort}' \
                                                         -var 'docker_image=${dockerImage}:blue' \
                                                         -var 'build_number=${env.BUILD_ID}' \
-                                                        -var 'version=blue' \
+                                                        -var 'app_version=blue' \
                                                         --lock=false
                                                     """
                                                 }
