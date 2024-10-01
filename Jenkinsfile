@@ -101,8 +101,10 @@ pipeline {
                                                     sh "${buildCommand}"
                                                     echo "Building Docker image for ${repoName} on Blue and Green"
                                                     // Docker build using the current directory context
-                                                    sh "docker build -t ${dockerImage}:blue -f ${dockerFile} ."
-                                                    sh "docker build -t ${dockerImage}:green -f ${dockerFile} ."
+                                                    sh "docker build -t ${dockerImage}:${env.BUILD_ID}-blue -f ${dockerFile} ."
+                                                    sh "docker tag ${dockerImage}:${env.BUILD_ID}-blue ${dockerImage}:blue"
+                                                    sh "docker build -t ${dockerImage}:${env.BUILD_ID}-green -f ${dockerFile} ."
+                                                    sh "docker tag ${dockerImage}:${env.BUILD_ID}-green ${dockerImage}:green"
 
                                                     // Docker login and push the image
                                                     withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
