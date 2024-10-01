@@ -88,9 +88,7 @@ pipeline {
                                                 echo "Setting environment variables for ${repoName}"
                                                 envVars = environment.collect { key, value -> "${key}=${value}" }
                                                 if (environment.ENV_FILE != null) {
-                                                    dir(repoName) {
-                                                        sh "cp ../${environment.ENV_FILE} > .env"
-                                                    }
+                                                    sh "cp ${environment.ENV_FILE} ${repoName}/.env"
                                                 }
                                             }
                                             withEnv(envVars) {
