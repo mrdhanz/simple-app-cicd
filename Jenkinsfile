@@ -226,11 +226,4 @@ pipeline {
             }
         }
     }
-
-    post {
-        always {
-            // Archive logs or clean up workspace
-            cleanWs()
-        }
-    }
 }
