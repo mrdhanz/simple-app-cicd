@@ -19,6 +19,10 @@ variable "build_number" {
   type        = string
 }
 
+variable "version" {
+  type        = string
+}
+
 provider "kubernetes" {
   config_path = "~/.kube/config"
 }
@@ -40,6 +44,7 @@ resource "kubernetes_deployment" "simple_app_be" {
     selector {
       match_labels = {
         app = var.app_name
+        version = var.version
       }
     }
 
@@ -48,6 +53,7 @@ resource "kubernetes_deployment" "simple_app_be" {
         labels = {
           app = var.app_name
           build_number = var.build_number
+          version = var.version
         }
       }
 
@@ -104,6 +110,7 @@ resource "kubernetes_service" "simple_app_be" {
   spec {
     selector = {
       app = var.app_name
+      version = var.version
     }
 
     port {

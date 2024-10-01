@@ -10,8 +10,8 @@
         "terraform_file": "terraform/frontend-k8s.tf",
         "env": {
             "PORT": "3000",
-            "REACT_APP_API_URL": "http://localhost:3001",
-            "REACT_APP_CLIENT_ID": "client-01"
+            "REACT_APP_API_URL": "http://simple-app-be-service",
+            "REACT_APP_CLIENT_ID": "Institut Teknologi Bandung"
         }
     },
     {
@@ -25,8 +25,8 @@
         "terraform_file": "terraform/backend-k8s.tf",
         "env": {
             "PORT": "3001",
-            "CLIENT_ID": "client-01",
-            "CLIENT_SECRET": "secret123",
+            "CLIENT_ID": "Institut Teknologi Bandung",
+            "CLIENT_SECRET": "itb-secret",
             "ENV_FILE": "environment/.env.backend"
         }
     }

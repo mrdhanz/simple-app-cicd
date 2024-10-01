@@ -1,8 +1,5 @@
 pipeline {
     agent any
-    parameters {
-        booleanParam(defaultValue: false, description: 'Destroy the infrastructure', name: 'DESTROY')
-    }
 
     environment {
         KUBE_CONFIG = credentials('kubeconfig')
@@ -27,9 +24,6 @@ pipeline {
         }
 
         stage('Detect Changes and Build Repositories') {
-            when {
-                not { equals expected: true, actual: params.DESTROY }
-            }
             steps {
                 script {
                     // Read the JSON file
@@ -90,11 +84,13 @@ pipeline {
                                         script {
                                             // parse repo.env. for withEnv
                                             def envVars = []
-                                            if(environment != null) {
+                                            if (environment != null) {
                                                 echo "Setting environment variables for ${repoName}"
                                                 envVars = environment.collect { key, value -> "${key}=${value}" }
-                                                if(environment.ENV_FILE != null) {
-                                                    writeFile file: '.env', text: envVars.join('\n')
+                                                if (environment.ENV_FILE != null) {
+                                                    dir(repoName) {
+                                                        sh "cp ../${environment.ENV_FILE} > .env"
+                                                    }
                                                 }
                                             }
                                             withEnv(envVars) {
@@ -105,21 +101,23 @@ pipeline {
                                                     sh "${installCommand}"
                                                     echo "Building project for ${repoName}"
                                                     sh "${buildCommand}"
-                                                    echo "Building Docker image for ${repoName}"
+                                                    echo "Building Docker image for ${repoName} on Blue and Green"
                                                     // Docker build using the current directory context
-                                                    sh "docker build -t ${dockerImage}:${env.BUILD_ID} -f ${dockerFile} ."
+                                                    sh "docker build -t ${dockerImage}:blue -f ${dockerFile} ."
+                                                    sh "docker build -t ${dockerImage}:green -f ${dockerFile} ."
 
                                                     // Docker login and push the image
                                                     withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
-                                                        echo "Pushing Docker image for ${repoName}"
+                                                        echo "Pushing Docker image for ${repoName} to Docker Hub on Blue and Green"
                                                         sh "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin"
-                                                        sh "docker push ${dockerImage}:${env.BUILD_ID}"
+                                                        sh "docker push ${dockerImage}:blue"
+                                                        sh "docker push ${dockerImage}:green"
                                                     }
                                                 }
                                             }
                                         }
                                     }
-                                    stage("Deploying ${repoName}") {
+                                    stage("Deploying ${repoName} to Blue-Green") {
                                         script {
                                             // Deploy the application to Kubernetes
                                             echo "Deploying ${repoName} to Kubernetes using Terraform"
@@ -129,18 +127,79 @@ pipeline {
                                                 sh "cp ../${terraformFile} main.tf"
                                                 // Check if terraform has init or not
                                                 if (!fileExists('.terraform')) {
-                                                    sh "terraform init"
+                                                    sh 'terraform init'
                                                 }
-                                                echo "Deploying to Kubernetes for repository: ${repoName}"
                                                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                                                    echo "Deploying to Kubernetes for repository: ${repoName} on Blue"
+                                                    sh """
+                                                        terraform workspace select -or-create=true ${repoName}-blue
+                                                        terraform apply -auto-approve \
+                                                        -var 'app_name=${repoName}-blue' \
+                                                        -var 'namespace_name=${repoName}-blue' \
+                                                        -var 'public_port=${publicPort}' \
+                                                        -var 'docker_image=${dockerImage}:blue' \
+                                                        -var 'build_number=${env.BUILD_ID}' \
+                                                        -var 'version=blue' \
+                                                        --lock=false
+                                                    """
+                                                    echo "Deploying to Kubernetes for repository: ${repoName} on Green"
                                                     sh """
                                                         terraform workspace select -or-create=true ${repoName}
                                                         terraform apply -auto-approve \
                                                         -var 'app_name=${repoName}' \
                                                         -var 'namespace_name=${repoName}' \
                                                         -var 'public_port=${publicPort}' \
-                                                        -var 'docker_image=${dockerImage}:${env.BUILD_ID}' \
+                                                        -var 'docker_image=${dockerImage}:green' \
                                                         -var 'build_number=${env.BUILD_ID}' \
+                                                        -var 'version=green' \
+                                                        --lock=false
+                                                    """
+                                                }
+                                            }
+                                        }
+                                    }
+                                    stage("Smoke Test ${repoName} on Blue") {
+                                        script {
+                                            // Smoke test the application
+                                            echo "Running smoke tests for ${repoName}"
+                                            // Use 'dir' to isolate each repository workspace
+                                            dir(repoName) {
+                                                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                                                    // Run tests on Blue environment
+                                                    sh "kubectl run smoke-test --image=busybox --rm -it --restart=Never -- wget -qO- http://${repoName}-blue-service"
+                                                }
+                                            }
+                                        }
+                                    }
+                                    stage("Smoke Test ${repoName} on Green") {
+                                        script {
+                                            // Smoke test the application
+                                            echo "Running smoke tests for ${repoName}"
+                                            // Use 'dir' to isolate each repository workspace
+                                            dir(repoName) {
+                                                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                                                    // Run tests on Green environment
+                                                    sh "kubectl run smoke-test --image=busybox --rm -it --restart=Never -- wget -qO- http://${repoName}-service"
+                                                }
+                                            }
+                                        }
+                                    }
+                                    stage("Clean Up ${repoName} on Blue"){
+                                        script {
+                                            // Clean up the resources
+                                            echo "Cleaning up resources for ${repoName} on Blue"
+                                            // Use 'dir' to isolate each repository workspace
+                                            dir(repoName) {
+                                                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                                                    sh """
+                                                        terraform workspace select ${repoName}-blue
+                                                        terraform destroy -auto-approve \
+                                                        -var 'app_name=${repoName}-blue' \
+                                                        -var 'namespace_name=${repoName}-blue' \
+                                                        -var 'public_port=${publicPort}' \
+                                                        -var 'docker_image=${dockerImage}:blue' \
+                                                        -var 'build_number=${env.BUILD_ID}' \
+                                                        -var 'version=blue' \
                                                         --lock=false
                                                     """
                                                 }
@@ -166,38 +225,12 @@ pipeline {
                 }
             }
         }
+    }
 
-        stage('Destroy Infrastructure') {
-            when { equals expected: true, actual: params.DESTROY }
-            steps {
-                script {
-                    // Read the JSON file
-                    def jsonText = readFile(file: REPO_JSON_FILE)
-                    def repos = readJSON text: jsonText
-
-                    // Loop through each repository
-                    for (repo in repos) {
-                        def repoName = repo.name
-                        def dockerImage = repo.docker_image
-                        def publicPort = repo.env.PORT
-                        // Use 'dir' to isolate each repository workspace
-                        dir(repoName) {
-                            echo "Destroying infrastructure for repository: ${repoName}"
-                            withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                                sh """
-                                    terraform workspace select -or-create=true ${repoName}
-                                    terraform destroy -auto-approve \
-                                    -var 'app_name=${repoName}' \
-                                    -var 'namespace_name=${repoName}' \
-                                    -var 'public_port=${publicPort}' \
-                                    -var 'docker_image=${dockerImage}:${env.BUILD_ID}' \
-                                    -var 'build_number=${env.BUILD_ID}'
-                                """
-                            }
-                        }
-                    }
-                }
-            }
+    post {
+        always {
+            // Archive logs or clean up workspace
+            cleanWs()
         }
     }
 }
