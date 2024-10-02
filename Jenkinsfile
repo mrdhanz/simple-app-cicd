@@ -226,27 +226,26 @@ pipeline {
                                     }
                                     // Clean up the resources on Blue
                                     stage("Clean Up Resources on Blue for ${repoName}") {
-                                        when {
-                                            expression {
-                                                env."${repoName}_GREEN_SMOKE_TEST" == 'true'
-                                            }
-                                        }
                                         script {
                                             // Use 'dir' to isolate each repository workspace
                                             dir(repoName) {
-                                                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                                                    echo "Cleaning up resources on Blue for ${repoName}"
-                                                    sh """
-                                                        terraform workspace select -or-create=true ${repoName}-blue
-                                                        terraform destroy -auto-approve \
-                                                        -var 'app_name=${repoName}' \
-                                                        -var 'namespace_name=${repoName}-blue' \
-                                                        -var 'public_port=${publicPort}' \
-                                                        -var 'docker_image=${dockerImage}:${env.BUILD_ID}' \
-                                                        -var 'build_number=${env.BUILD_ID}' \
-                                                        -var 'app_version=blue' \
-                                                        --lock=false
-                                                    """
+                                                if (env."${repoName}_GREEN_SMOKE_TEST" == 'true') {
+                                                    withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                                                        echo "Cleaning up resources on Blue for ${repoName}"
+                                                        sh """
+                                                            terraform workspace select -or-create=true ${repoName}-blue
+                                                            terraform destroy -auto-approve \
+                                                            -var 'app_name=${repoName}' \
+                                                            -var 'namespace_name=${repoName}-blue' \
+                                                            -var 'public_port=${publicPort}' \
+                                                            -var 'docker_image=${dockerImage}:${env.BUILD_ID}' \
+                                                            -var 'build_number=${env.BUILD_ID}' \
+                                                            -var 'app_version=blue' \
+                                                            --lock=false
+                                                        """
+                                                    }
+                                                } else {
+                                                    echo "Smoke test failed for ${repoName} on Green. Skipping cleanup on Blue."
                                                 }
                                             }
                                         }
