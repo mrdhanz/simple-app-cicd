@@ -194,12 +194,29 @@ pipeline {
                                                             -var 'app_name=${repoName}' \
                                                             -var 'namespace_name=${repoName}' \
                                                             -var 'public_port=${publicPort}' \
-                                                            -var 'docker_image=${dockerImage}:${dockerImage}:green-${env.BUILD_ID}' \
+                                                            -var 'docker_image=${dockerImage}:green-${env.BUILD_ID}' \
                                                             -var 'build_number=${env.BUILD_ID}' \
                                                             -var 'app_version=green' \
                                                             --lock=false
                                                         """
-                                                        echo "Traffic switched to Green for ${repoName}"
+                                                        // Run tests on Green environment
+                                                        def SVC_EXTERNAL_IP = script {
+                                                            return sh(script: "kubectl get svc ${repoName}-service -n ${repoName} -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
+                                                        }
+                                                        def SVC_PORT = script {
+                                                            return sh(script: "kubectl get svc ${repoName}-service -n ${repoName} -o jsonpath='{.spec.ports[0].port}'", returnStdout: true).trim()
+                                                        }
+
+                                                        echo "Service is available at http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
+
+                                                        def isServiceAvailable = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://${SVC_EXTERNAL_IP}:${SVC_PORT}", returnStatus: true)
+                                                        if (isServiceAvailable == 0) {
+                                                            echo "Smoke test passed for ${repoName} on Green"
+                                                            env."${repoName}_GREEN_SMOKE_TEST" = 'true'
+                                                            echo "Traffic switched to Green for ${repoName}"
+                                                        } else {
+                                                            error "Smoke test failed for ${repoName} on Green"
+                                                        }
                                                     } else {
                                                         error "Smoke test failed for ${repoName} on Blue. Traffic not switched to Green."
                                                     }
@@ -207,37 +224,13 @@ pipeline {
                                             }
                                         }
                                     }
-                                    // Smoke test the application on Green
-                                    stage("Smoke Test ${repoName} on Green") {
-                                        script {
-                                            // Smoke test the application
-                                            echo "Running smoke tests for ${repoName} on Green"
-                                            // Use 'dir' to isolate each repository workspace
-                                            dir(repoName) {
-                                                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                                                    // Run tests on Green environment
-                                                    def SVC_EXTERNAL_IP = script {
-                                                        return sh(script: "kubectl get svc ${repoName}-service -n ${repoName} -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
-                                                    }
-                                                    def SVC_PORT = script {
-                                                        return sh(script: "kubectl get svc ${repoName}-service -n ${repoName} -o jsonpath='{.spec.ports[0].port}'", returnStdout: true).trim()
-                                                    }
-
-                                                    echo "Service is available at http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
-
-                                                    def isServiceAvailable = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://${SVC_EXTERNAL_IP}:${SVC_PORT}", returnStatus: true)
-                                                    if (isServiceAvailable == 0) {
-                                                        echo "Smoke test passed for ${repoName} on Green"
-                                                        env."${repoName}_GREEN_SMOKE_TEST" = 'true'
-                                                    } else {
-                                                        error "Smoke test failed for ${repoName} on Green"
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
                                     // Clean up the resources on Blue
                                     stage("Clean Up Resources on Blue for ${repoName}") {
+                                        when {
+                                            expression {
+                                                env."${repoName}_GREEN_SMOKE_TEST" == 'true'
+                                            }
+                                        }
                                         script {
                                             // Use 'dir' to isolate each repository workspace
                                             dir(repoName) {
