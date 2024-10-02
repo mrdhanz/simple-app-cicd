@@ -99,25 +99,21 @@ pipeline {
                                                     sh "${installCommand}"
                                                     echo "Building project for ${repoName}"
                                                     sh "${buildCommand}"
-                                                    echo "Building Docker image for ${repoName} on Blue and Green"
+                                                    echo "Building Docker image for ${repoName}"
                                                     // Docker build using the current directory context
-                                                    sh "docker build -t ${dockerImage}:${env.BUILD_ID}-blue -f ${dockerFile} ."
-                                                    sh "docker tag ${dockerImage}:${env.BUILD_ID}-blue ${dockerImage}:blue"
-                                                    sh "docker build -t ${dockerImage}:${env.BUILD_ID}-green -f ${dockerFile} ."
-                                                    sh "docker tag ${dockerImage}:${env.BUILD_ID}-green ${dockerImage}:green"
+                                                    sh "docker build -t ${dockerImage}:${env.BUILD_ID} -f ${dockerFile} ."
 
                                                     // Docker login and push the image
                                                     withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
-                                                        echo "Pushing Docker image for ${repoName} to Docker Hub on Blue and Green"
+                                                        echo "Pushing Docker image for ${repoName} to Docker Hub on Blue"
                                                         sh "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin"
-                                                        sh "docker push ${dockerImage}:blue"
-                                                        sh "docker push ${dockerImage}:green"
+                                                        sh "docker push ${dockerImage}:${env.BUILD_ID}"
                                                     }
                                                 }
                                             }
                                         }
                                     }
-                                    stage("Deploying ${repoName} to Blue-Green") {
+                                    stage("Deploying ${repoName} to Blue") {
                                         script {
                                             // Deploy the application to Kubernetes
                                             echo "Deploying ${repoName} to Kubernetes using Terraform"
@@ -134,24 +130,12 @@ pipeline {
                                                     sh """
                                                         terraform workspace select -or-create=true ${repoName}-blue
                                                         terraform apply -auto-approve \
-                                                        -var 'app_name=${repoName}-blue' \
+                                                        -var 'app_name=${repoName}' \
                                                         -var 'namespace_name=${repoName}-blue' \
                                                         -var 'public_port=${publicPort}' \
-                                                        -var 'docker_image=${dockerImage}:blue' \
+                                                        -var 'docker_image=${dockerImage}:${env.BUILD_ID}' \
                                                         -var 'build_number=${env.BUILD_ID}' \
                                                         -var 'app_version=blue' \
-                                                        --lock=false
-                                                    """
-                                                    echo "Deploying to Kubernetes for repository: ${repoName} on Green"
-                                                    sh """
-                                                        terraform workspace select -or-create=true ${repoName}
-                                                        terraform apply -auto-approve \
-                                                        -var 'app_name=${repoName}' \
-                                                        -var 'namespace_name=${repoName}' \
-                                                        -var 'public_port=${publicPort}' \
-                                                        -var 'docker_image=${dockerImage}:green' \
-                                                        -var 'build_number=${env.BUILD_ID}' \
-                                                        -var 'app_version=green' \
                                                         --lock=false
                                                     """
                                                 }
@@ -167,23 +151,67 @@ pipeline {
                                                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                                                     // Run tests on Blue environment
                                                     def SVC_EXTERNAL_IP = script {
-                                                        return sh(script: "kubectl get svc ${repoName}-blue-service -n ${repoName}-blue -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
+                                                        return sh(script: "kubectl get svc ${repoName}-service -n ${repoName}-blue -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
                                                     }
                                                     def SVC_PORT = script {
-                                                        return sh(script: "kubectl get svc ${repoName}-blue-service -n ${repoName}-blue -o jsonpath='{.spec.ports[0].port}'", returnStdout: true).trim()
+                                                        return sh(script: "kubectl get svc ${repoName}-service -n ${repoName}-blue -o jsonpath='{.spec.ports[0].port}'", returnStdout: true).trim()
                                                     }
 
                                                     echo "Service is available at http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
 
-                                                    sh "curl -X GET http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
+                                                    def isServiceAvailable = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://${SVC_EXTERNAL_IP}:${SVC_PORT}", returnStatus: true)
+                                                    if (isServiceAvailable == 0) {
+                                                        echo "Smoke test passed for ${repoName} on Blue"
+                                                        env."${repoName}_BLUE_SMOKE_TEST" = 'true'
+                                                    } else {
+                                                        error "Smoke test failed for ${repoName} on Blue"
+                                                    }
                                                 }
                                             }
                                         }
                                     }
+                                    // Switch the traffic to Green when the smoke test passes
+                                    stage("Switch Traffic to Green for ${repoName}") {
+                                        script {
+                                            // Use 'dir' to isolate each repository workspace
+                                            dir(repoName) {
+                                                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                                                    echo "Switching traffic to Green for ${repoName}"
+                                                    // Only patch the service and deployment container image if the smoke test passed
+                                                    if (env."${repoName}_BLUE_SMOKE_TEST" == 'true') {
+                                                        // Tag Docker image with Green and push to Docker Hub
+                                                        sh "docker tag ${dockerImage}:${env.BUILD_ID} ${dockerImage}:green-${env.BUILD_ID}"
+                                                        // Docker login and push the image
+                                                        withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+                                                            echo "Pushing Docker image for ${repoName} to Docker Hub on Green"
+                                                            sh "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin"
+                                                            sh "docker push ${dockerImage}:green-${env.BUILD_ID}"
+                                                        }
+                                                        echo "Deploying to Kubernetes for repository: ${repoName} on Green"
+                                                        sh """
+                                                            terraform workspace select -or-create=true ${repoName}
+                                                            terraform apply -auto-approve \
+                                                            -var 'app_name=${repoName}' \
+                                                            -var 'namespace_name=${repoName}' \
+                                                            -var 'public_port=${publicPort}' \
+                                                            -var 'docker_image=${dockerImage}:${dockerImage}:green-${env.BUILD_ID}' \
+                                                            -var 'build_number=${env.BUILD_ID}' \
+                                                            -var 'app_version=green' \
+                                                            --lock=false
+                                                        """
+                                                        echo "Traffic switched to Green for ${repoName}"
+                                                    } else {
+                                                        error "Smoke test failed for ${repoName} on Blue. Traffic not switched to Green."
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    // Smoke test the application on Green
                                     stage("Smoke Test ${repoName} on Green") {
                                         script {
                                             // Smoke test the application
-                                            echo "Running smoke tests for ${repoName}"
+                                            echo "Running smoke tests for ${repoName} on Green"
                                             // Use 'dir' to isolate each repository workspace
                                             dir(repoName) {
                                                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
@@ -197,25 +225,31 @@ pipeline {
 
                                                     echo "Service is available at http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
 
-                                                    sh "curl -X GET http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
+                                                    def isServiceAvailable = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://${SVC_EXTERNAL_IP}:${SVC_PORT}", returnStatus: true)
+                                                    if (isServiceAvailable == 0) {
+                                                        echo "Smoke test passed for ${repoName} on Green"
+                                                        env."${repoName}_GREEN_SMOKE_TEST" = 'true'
+                                                    } else {
+                                                        error "Smoke test failed for ${repoName} on Green"
+                                                    }
                                                 }
                                             }
                                         }
                                     }
-                                    stage("Clean Up ${repoName} on Blue"){
+                                    // Clean up the resources on Blue
+                                    stage("Clean Up Resources on Blue for ${repoName}") {
                                         script {
-                                            // Clean up the resources
-                                            echo "Cleaning up resources for ${repoName} on Blue"
                                             // Use 'dir' to isolate each repository workspace
                                             dir(repoName) {
                                                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                                                    echo "Cleaning up resources on Blue for ${repoName}"
                                                     sh """
-                                                        terraform workspace select ${repoName}-blue
+                                                        terraform workspace select -or-create=true ${repoName}-blue
                                                         terraform destroy -auto-approve \
-                                                        -var 'app_name=${repoName}-blue' \
+                                                        -var 'app_name=${repoName}' \
                                                         -var 'namespace_name=${repoName}-blue' \
                                                         -var 'public_port=${publicPort}' \
-                                                        -var 'docker_image=${dockerImage}:blue' \
+                                                        -var 'docker_image=${dockerImage}:${env.BUILD_ID}' \
                                                         -var 'build_number=${env.BUILD_ID}' \
                                                         -var 'app_version=blue' \
                                                         --lock=false
