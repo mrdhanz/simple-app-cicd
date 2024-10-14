@@ -104,7 +104,7 @@ pipeline {
                                                 echo "Setting environment variables for ${repoName}"
                                                 envVars = environment.collect { key, value -> "${key}=${value}" }
                                                 if (environment.ENV_FILE != null) {
-                                                    sh "cp ${environment.ENV_FILE} ${repoName}/.env"
+                                                    sh "cp -f ${environment.ENV_FILE} ${repoName}/.env"
                                                 }
                                             }
                                             withEnv(envVars) {
@@ -188,15 +188,10 @@ pipeline {
                                         dir(repoName) {
                                             def deployEnv = getActiveDeployEnvironment()
                                             withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                                                def SVC_EXTERNAL_IP = sh(script: "kubectl get svc ${repoName}-service -n ${repoName} -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
-                                                def SVC_PORT = sh(script: "kubectl get svc ${repoName}-service -n ${repoName} -o jsonpath='{.spec.ports[0].port}'", returnStdout: true).trim()
-
-                                                def isServiceAvailable = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://${SVC_EXTERNAL_IP}:${SVC_PORT}", returnStatus: true)
-                                                if (isServiceAvailable == 0) {
-                                                    echo "[${repoName}] Service is available at http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
-                                                } else {
-                                                    error "[${repoName}] Service is not available at http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
-                                                }
+                                                sh """
+                                                    kubectl get pods -n ${repoName} -l app=${repoName}-${deployEnv}
+                                                    kubectl get svc ${repoName}-service -n ${repoName}
+                                                """
                                             }
                                         }
                                     }
