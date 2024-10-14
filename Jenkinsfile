@@ -140,7 +140,7 @@ pipeline {
                                                     kubectl create namespace ${repoName} --dry-run=client -o yaml | kubectl apply -f -
                                                 """
                                                 sh """ if ! kubectl get svc ${repoName}-service -n ${repoName}; then
-                                                        kubectl create service loadbalancer ${repoName}-service --tcp=${publicPort}:${targetPort} --selector=app=${repoName}-${deployEnv},version=${deployEnv} --dry-run=client -o yaml | kubectl apply -f - -n ${repoName}
+                                                        kubectl create service loadbalancer ${repoName}-service --tcp=${publicPort}:${targetPort} --dry-run=client -o yaml | sed '/^spec:/a \ \ selector:\n\ \ \ \ app: ${repoName}-${deployEnv}\n\ \ \ \ version: ${deployEnv}' | kubectl apply -f - -n ${repoName}
                                                     fi
                                                 """
                                                 sh """
