@@ -137,6 +137,12 @@ pipeline {
                                                 echo "Deploying to Kubernetes for repository: ${repoName} on ${deployEnv} using Terraform"
                                                 sh """
                                                     kubectl create namespace ${repoName} --dry-run=client -o yaml | kubectl apply -f -
+                                                """
+                                                sh """ if ! kubectl get svc ${repoName}-service -n ${repoName}; then
+                                                        kubectl create service loadbalancer ${repoName}-service --dry-run=client --selector='app=${repoName}-${deployEnv},version=${deployEnv}' -o yaml | kubectl apply -f - -n ${repoName}
+                                                    fi
+                                                """
+                                                sh """
                                                     terraform workspace select -or-create=true ${repoName}-${deployEnv}
                                                     terraform apply -auto-approve \
                                                     -var 'app_name=${repoName}-${deployEnv}' \
