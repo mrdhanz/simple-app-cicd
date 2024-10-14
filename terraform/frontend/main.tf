@@ -1,28 +1,3 @@
-variable "namespace_name" {
-    description = "Namespace for the Kubernetes resources"
-    type        = string
-}
-
-variable "app_name" {
-    description = "The name of the application"
-    type        = string
-}
-
-variable "docker_image" {
-    description = "The Docker image to use for the service"
-    type        = string
-}
-
-variable "build_number" {
-    description = "The build number of the application"
-    type        = string
-}
-
-variable "app_version" {
-    description = "The version of the application"
-    type        = string
-}
-
 provider "kubernetes" {
     config_path = "~/.kube/config"    
 }

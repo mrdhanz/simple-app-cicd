@@ -125,16 +125,21 @@ pipeline {
                                                         -var 'docker_image=${dockerImage}:${deployEnv}' \
                                                         -var 'build_number=${env.BUILD_ID}' \
                                                         -var 'app_version=${deployEnv}' \
+                                                        -var 'service_name=${repoName}-service' \
+                                                        -var 'public_port=${publicPort}' \
                                                         --lock=false
                                                     """
                                                     echo "Deploying service for ${repoName} on ${deployEnv}"
                                                     sh """
                                                         terraform workspace select -or-create=true ${repoName}
                                                         terraform apply service.tf -auto-approve \
+                                                        -var 'app_name=${repoName}-${deployEnv}' \
                                                         -var 'namespace_name=${repoName}' \
-                                                        -var 'public_port=${publicPort}' \
+                                                        -var 'docker_image=${dockerImage}:${deployEnv}' \
+                                                        -var 'build_number=${env.BUILD_ID}' \
                                                         -var 'app_version=${deployEnv}' \
                                                         -var 'service_name=${repoName}-service' \
+                                                        -var 'public_port=${publicPort}' \
                                                         --lock=false
                                                     """
                                                 }
