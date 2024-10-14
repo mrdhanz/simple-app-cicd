@@ -218,7 +218,7 @@ pipeline {
 private def getActiveDeployEnvironment() {
     if (!fileExists('DEPLOY_ENV')) {
         echo "Creating DEPLOY_ENV file"
-        sh "echo ${env.DEPLOY_ENV} > DEPLOY_ENV"
+        sh "echo ${env.DEPLOY_ENV} > /var/lib/jenkins/workspace/DEPLOY_ENV"
     }
-    return readFile('DEPLOY_ENV').trim()
+    return readFile('/var/lib/jenkins/workspace/DEPLOY_ENV').trim()
 }
