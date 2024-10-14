@@ -66,6 +66,7 @@ pipeline {
                         def dockerFile = repo.docker_file
                         def environment = repo.env
                         def publicPort = repo.env.PORT
+                        def targetPort = repo.env.LOCAL_PORT
                         def terraformFile = repo.terraform_file
 
                         dir(repoName) {
@@ -139,7 +140,7 @@ pipeline {
                                                     kubectl create namespace ${repoName} --dry-run=client -o yaml | kubectl apply -f -
                                                 """
                                                 sh """ if ! kubectl get svc ${repoName}-service -n ${repoName}; then
-                                                        kubectl create service loadbalancer ${repoName}-service --tcp=${publicPort}:targetPort --selector=app=${repoName}-${deployEnv},version=${deployEnv} --dry-run=client -o yaml | kubectl apply -f - -n ${repoName}
+                                                        kubectl create service loadbalancer ${repoName}-service --tcp=${publicPort}:${targetPort} --selector=app=${repoName}-${deployEnv},version=${deployEnv} --dry-run=client -o yaml | kubectl apply -f - -n ${repoName}
                                                     fi
                                                 """
                                                 sh """
