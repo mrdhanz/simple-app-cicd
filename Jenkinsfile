@@ -160,7 +160,7 @@ pipeline {
                                                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                                                     echo "Switching traffic to ${deployEnv} for ${repoName}"
                                                     sh """
-                                                        kubectl patch service ${repoName}-service -n ${repoName} -p '{"spec":{"selector":{"app":"${repoName}", "version":"${deployEnv}"}}}'
+                                                        kubectl patch service ${repoName}-service -n ${repoName} -p '{"spec":{"selector":{"app":"${repoName}-${deployEnv}", "version":"${deployEnv}"}}}'
                                                     """
                                                     sh "echo ${deployEnv} > DEPLOY_ENV"
                                                     echo "Traffic switched to ${deployEnv} for ${repoName}"
