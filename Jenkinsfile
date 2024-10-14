@@ -135,7 +135,7 @@ pipeline {
                                     }
                                     stage("Switch Traffic Between Blue & Green Environment for ${repoName}") {
                                         when {
-                                            expression { return params.SWITCH_TRAFFIC }
+                                            expression { params.SWITCH_TRAFFIC == true }
                                         }
                                         script {
                                             dir(repoName) {
