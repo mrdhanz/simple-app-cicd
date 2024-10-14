@@ -219,7 +219,7 @@ pipeline {
 }
 
 private def getActiveDeployEnvironment() {
-    if (!fileExists('DEPLOY_ENV')) {
+    if (!fileExists('/var/lib/jenkins/workspace/DEPLOY_ENV')) {
         echo "Creating DEPLOY_ENV file"
         sh "echo ${env.DEPLOY_ENV} > /var/lib/jenkins/workspace/DEPLOY_ENV"
     }
