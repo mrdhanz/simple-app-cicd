@@ -7,6 +7,8 @@ properties([
             def currentEnv = \'blue\'
             if (deployEnvFile.exists()) {
                 currentEnv = deployEnvFile.text.trim()
+            } else {
+                deployEnvFile << currentEnv
             }
             def nextEnv = currentEnv == \'blue\' ? \'green\' : \'blue\'
             return [nextEnv, currentEnv]'''
