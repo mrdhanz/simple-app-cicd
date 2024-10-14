@@ -12,7 +12,7 @@ properties([
                 sh "echo ${currentEnv} > /var/lib/jenkins/workspace/DEPLOY_ENV"
             }
             def nextEnv = currentEnv == \'blue\' ? \'green\' : \'blue\'
-            return [nextEnv, currentEnv]'''
+            return [currentEnv, nextEnv]'''
             ]))
         ])
     ])
