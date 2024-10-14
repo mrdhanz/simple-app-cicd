@@ -13,7 +13,7 @@ properties([
             ]))
         ])
     ])
-    
+
 pipeline {
     agent any
 
@@ -92,37 +92,38 @@ pipeline {
                             }
 
                             parallelStages[repoName] = {
-                                stage("Building ${repoName}") {
-                                    when {
-                                        expression { env."${repoName}_HAS_CHANGES" == 'true' || hasChanges == '1' }
-                                    }
-                                    script {
-                                        def envVars = []
-                                        if (environment != null) {
-                                            echo "Setting environment variables for ${repoName}"
-                                            envVars = environment.collect { key, value -> "${key}=${value}" }
-                                            if (environment.ENV_FILE != null) {
-                                                sh "cp ${environment.ENV_FILE} ${repoName}/.env"
+                                if(env."${repoName}_HAS_CHANGES" == 'true' || hasChanges == '1') {
+                                    stage("Building ${repoName}") {
+                                        script {
+                                            def envVars = []
+                                            if (environment != null) {
+                                                echo "Setting environment variables for ${repoName}"
+                                                envVars = environment.collect { key, value -> "${key}=${value}" }
+                                                if (environment.ENV_FILE != null) {
+                                                    sh "cp ${environment.ENV_FILE} ${repoName}/.env"
+                                                }
                                             }
-                                        }
-                                        withEnv(envVars) {
-                                            dir(repoName) {
-                                                def deployEnv = getActiveDeployEnvironment()
-                                                echo "Installing dependencies for ${repoName}"
-                                                sh "${installCommand}"
-                                                echo "Building project for ${repoName}"
-                                                sh "${buildCommand}"
-                                                echo "Building Docker image for ${repoName}"
-                                                sh "docker build -t ${dockerImage}:${deployEnv} -f ${dockerFile} ."
+                                            withEnv(envVars) {
+                                                dir(repoName) {
+                                                    def deployEnv = getActiveDeployEnvironment()
+                                                    echo "Installing dependencies for ${repoName}"
+                                                    sh "${installCommand}"
+                                                    echo "Building project for ${repoName}"
+                                                    sh "${buildCommand}"
+                                                    echo "Building Docker image for ${repoName}"
+                                                    sh "docker build -t ${dockerImage}:${deployEnv} -f ${dockerFile} ."
 
-                                                withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
-                                                    echo "Pushing Docker image for ${repoName} to Docker Hub"
-                                                    sh "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin"
-                                                    sh "docker push ${dockerImage}:${deployEnv}"
+                                                    withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+                                                        echo "Pushing Docker image for ${repoName} to Docker Hub"
+                                                        sh "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin"
+                                                        sh "docker push ${dockerImage}:${deployEnv}"
+                                                    }
                                                 }
                                             }
                                         }
                                     }
+                                } else {
+                                    echo "No changes detected in ${repoName}. Skipping build."
                                 }
                                 stage("Deploying ${repoName}") {
                                     script {
@@ -150,21 +151,20 @@ pipeline {
                                         }
                                     }
                                 }
-                                stage("Switch Traffic Between Blue & Green Environment for ${repoName}") {
-                                    when {
-                                        expression { params.SWITCH_TRAFFIC == true }
-                                    }
-                                    script {
-                                        dir(repoName) {
-                                            def deployEnv = getActiveDeployEnvironment()
-                                            deployEnv = (deployEnv == 'blue') ? 'green' : 'blue'
-                                            withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                                                echo "Switching traffic to ${deployEnv} for ${repoName}"
-                                                sh """
-                                                    kubectl patch service ${repoName}-service -n ${repoName} -p '{"spec":{"selector":{"app":"${repoName}", "version":"${deployEnv}"}}}'
-                                                """
-                                                sh "echo ${deployEnv} > DEPLOY_ENV"
-                                                echo "Traffic switched to ${deployEnv} for ${repoName}"
+                                if (params.SWITCH_TRAFFIC == true){
+                                    stage("Switch Traffic Between Blue & Green Environment for ${repoName}") {
+                                        script {
+                                            dir(repoName) {
+                                                def deployEnv = getActiveDeployEnvironment()
+                                                deployEnv = (deployEnv == 'blue') ? 'green' : 'blue'
+                                                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                                                    echo "Switching traffic to ${deployEnv} for ${repoName}"
+                                                    sh """
+                                                        kubectl patch service ${repoName}-service -n ${repoName} -p '{"spec":{"selector":{"app":"${repoName}", "version":"${deployEnv}"}}}'
+                                                    """
+                                                    sh "echo ${deployEnv} > DEPLOY_ENV"
+                                                    echo "Traffic switched to ${deployEnv} for ${repoName}"
+                                                }
                                             }
                                         }
                                     }
