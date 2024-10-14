@@ -142,8 +142,8 @@ pipeline {
                                                 sh """
                                                     if ! kubectl get svc ${repoName}-service -n ${repoName}; then
                                                         kubectl create service loadbalancer ${repoName}-service --tcp=${publicPort}:${targetPort} --dry-run=client -o yaml | \\
-                                                        sed '/^spec:/a \\  selector:\\n\\    app: ${repoName}-${deployEnv}\\n\\    version: ${deployEnv}' | \\
                                                         kubectl apply -f - -n ${repoName}
+                                                        kubectl patch service ${repoName}-service -n ${repoName} -p '{"spec":{"selector":{"app":"${repoName}-${deployEnv}", "version":"${deployEnv}"}}}'
                                                     fi
                                                 """
                                                 sh """
