@@ -136,6 +136,7 @@ pipeline {
                                             withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                                                 echo "Deploying to Kubernetes for repository: ${repoName} on ${deployEnv} using Terraform"
                                                 sh """
+                                                    kubectl create namespace ${repoName} --dry-run=client -o yaml | kubectl apply -f -
                                                     terraform workspace select -or-create=true ${repoName}-${deployEnv}
                                                     terraform apply -auto-approve \
                                                     -var 'app_name=${repoName}-${deployEnv}' \

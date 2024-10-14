@@ -2,16 +2,10 @@ provider "kubernetes" {
     config_path = "~/.kube/config"    
 }
 
-resource "kubernetes_namespace" "backend" {
-  metadata {
-    name = var.namespace_name
-  }
-}
-
 resource "kubernetes_deployment" "backend" {
   metadata {
     name      = var.app_name
-    namespace = kubernetes_namespace.backend.metadata[0].name
+    namespace = var.namespace_name
   }
 
   spec {
@@ -60,7 +54,7 @@ resource "kubernetes_deployment" "backend" {
 resource "kubernetes_horizontal_pod_autoscaler" "backend" {
   metadata {
     name      = var.app_name
-    namespace = kubernetes_namespace.backend.metadata[0].name
+    namespace = var.namespace_name
   }
 
   depends_on = [kubernetes_deployment.backend]  # Ensure HPA waits for Deployment
