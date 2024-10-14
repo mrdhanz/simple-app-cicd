@@ -1,33 +1,24 @@
+properties([
+    parameters([
+        reactiveChoice(choiceType: 'PT_SINGLE_SELECT', description: 'Select the deployment environment (Blue or Green).', filterLength: 1, filterable: false, 
+        name: 'DEPLOY_ENV', randomName: 'choice-parameter-1795658162080615', referencedParameters: '', 
+        script: groovyScript(fallbackScript: [classpath: [], oldScript: '', sandbox: false, script: 'return [\'blue\', \'green\']'], 
+        script: [classpath: [], oldScript: '', sandbox: false, script: '''def deployEnvFile = new File(\'/var/lib/jenkins/workspace/DEPLOY_ENV\')
+            def currentEnv = \'blue\'
+            if (deployEnvFile.exists()) {
+                currentEnv = deployEnvFile.text.trim()
+            }
+            def nextEnv = currentEnv == \'blue\' ? \'green\' : \'blue\'
+            return [nextEnv, currentEnv]'''
+            ]))
+        ])
+    ])
+    
 pipeline {
     agent any
 
     parameters {
         booleanParam(name: 'SWITCH_TRAFFIC', defaultValue: false, description: 'Switch traffic between Blue and Green')
-        activeChoiceReactiveParam('DEPLOY_ENV') {
-            description('Select the deployment environment (Blue or Green).')
-            choiceType('SINGLE_SELECT')
-            groovyScript {
-                script("""
-                    // This Groovy script dynamically provides the environment options.
-                    def deployEnvFile = new File('/var/lib/jenkins/workspace/DEPLOY_ENV')
-                    def currentEnv = 'blue' // Default to 'blue' if the file doesn't exist
-                    
-                    if (deployEnvFile.exists()) {
-                        currentEnv = deployEnvFile.text.trim()
-                    }
-                    
-                    // Determine the next environment to deploy based on the current environment
-                    def nextEnv = currentEnv == 'blue' ? 'green' : 'blue'
-                    
-                    // Return the possible options as an array
-                    return [nextEnv, currentEnv]
-                """)
-                fallbackScript("""
-                    // In case the main script fails, default to blue and green
-                    return ['blue', 'green']
-                """)
-            }
-        }
     }
 
     environment {
