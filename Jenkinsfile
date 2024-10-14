@@ -8,7 +8,8 @@ properties([
             if (deployEnvFile.exists()) {
                 currentEnv = deployEnvFile.text.trim()
             } else {
-                deployEnvFile << currentEnv
+                echo "Creating DEPLOY_ENV file"
+                sh "echo ${currentEnv} > /var/lib/jenkins/workspace/DEPLOY_ENV"
             }
             def nextEnv = currentEnv == \'blue\' ? \'green\' : \'blue\'
             return [nextEnv, currentEnv]'''
