@@ -3,13 +3,38 @@ pipeline {
 
     parameters {
         booleanParam(name: 'SWITCH_TRAFFIC', defaultValue: false, description: 'Switch traffic between Blue and Green')
+        activeChoiceReactiveParam('DEPLOY_ENV') {
+            description('Select the deployment environment (Blue or Green).')
+            choiceType('SINGLE_SELECT')
+            groovyScript {
+                script("""
+                    // This Groovy script dynamically provides the environment options.
+                    def deployEnvFile = new File('/var/lib/jenkins/workspace/DEPLOY_ENV')
+                    def currentEnv = 'blue' // Default to 'blue' if the file doesn't exist
+                    
+                    if (deployEnvFile.exists()) {
+                        currentEnv = deployEnvFile.text.trim()
+                    }
+                    
+                    // Determine the next environment to deploy based on the current environment
+                    def nextEnv = currentEnv == 'blue' ? 'green' : 'blue'
+                    
+                    // Return the possible options as an array
+                    return [nextEnv, currentEnv]
+                """)
+                fallbackScript("""
+                    // In case the main script fails, default to blue and green
+                    return ['blue', 'green']
+                """)
+            }
+        }
     }
 
     environment {
         KUBE_CONFIG = credentials('kubeconfig')
         DOCKER_CREDENTIALS_ID = 'docker-credentials'
         REPO_JSON_FILE = 'apps/repositories.json'
-        DEPLOY_ENV = "blue"
+        DEPLOY_ENV = "${params.DEPLOY_ENV}"
     }
 
     tools {
@@ -75,105 +100,104 @@ pipeline {
                                 hasChanges = '1'
                             }
 
-                            if (hasChanges != '0') {
-                                anyRepoHasChanges = true
-                                parallelStages[repoName] = {
-                                    stage("Building ${repoName}") {
-                                        script {
-                                            def envVars = []
-                                            if (environment != null) {
-                                                echo "Setting environment variables for ${repoName}"
-                                                envVars = environment.collect { key, value -> "${key}=${value}" }
-                                                if (environment.ENV_FILE != null) {
-                                                    sh "cp ${environment.ENV_FILE} ${repoName}/.env"
-                                                }
+                            parallelStages[repoName] = {
+                                stage("Building ${repoName}") {
+                                    when {
+                                        expression { env."${repoName}_HAS_CHANGES" == 'true' || hasChanges == '1' }
+                                    }
+                                    script {
+                                        def envVars = []
+                                        if (environment != null) {
+                                            echo "Setting environment variables for ${repoName}"
+                                            envVars = environment.collect { key, value -> "${key}=${value}" }
+                                            if (environment.ENV_FILE != null) {
+                                                sh "cp ${environment.ENV_FILE} ${repoName}/.env"
                                             }
-                                            withEnv(envVars) {
-                                                dir(repoName) {
-                                                    def deployEnv = getActiveDeployEnvironment()
-                                                    echo "Installing dependencies for ${repoName}"
-                                                    sh "${installCommand}"
-                                                    echo "Building project for ${repoName}"
-                                                    sh "${buildCommand}"
-                                                    echo "Building Docker image for ${repoName}"
-                                                    sh "docker build -t ${dockerImage}:${deployEnv} -f ${dockerFile} ."
+                                        }
+                                        withEnv(envVars) {
+                                            dir(repoName) {
+                                                def deployEnv = getActiveDeployEnvironment()
+                                                echo "Installing dependencies for ${repoName}"
+                                                sh "${installCommand}"
+                                                echo "Building project for ${repoName}"
+                                                sh "${buildCommand}"
+                                                echo "Building Docker image for ${repoName}"
+                                                sh "docker build -t ${dockerImage}:${deployEnv} -f ${dockerFile} ."
 
-                                                    withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
-                                                        echo "Pushing Docker image for ${repoName} to Docker Hub"
-                                                        sh "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin"
-                                                        sh "docker push ${dockerImage}:${deployEnv}"
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    stage("Deploying ${repoName}") {
-                                        script {
-                                            dir(repoName) {
-                                                def deployEnv = getActiveDeployEnvironment()
-                                                sh "cp -f ../${terraformFile} ."
-                                                if (!fileExists('.terraform')) {
-                                                    sh 'terraform init'
-                                                }
-                                                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                                                    echo "Deploying to Kubernetes for repository: ${repoName} on ${deployEnv} using Terraform"
-                                                    sh """
-                                                        terraform workspace select -or-create=true ${repoName}-${deployEnv}
-                                                        terraform apply -auto-approve \
-                                                        -var 'app_name=${repoName}-${deployEnv}' \
-                                                        -var 'namespace_name=${repoName}' \
-                                                        -var 'docker_image=${dockerImage}:${deployEnv}' \
-                                                        -var 'build_number=${env.BUILD_ID}' \
-                                                        -var 'app_version=${deployEnv}' \
-                                                        -var 'service_name=${repoName}-service' \
-                                                        -var 'public_port=${publicPort}' \
-                                                        --lock=false
-                                                    """
-                                                }
-                                            }
-                                        }
-                                    }
-                                    stage("Switch Traffic Between Blue & Green Environment for ${repoName}") {
-                                        when {
-                                            expression { params.SWITCH_TRAFFIC == true }
-                                        }
-                                        script {
-                                            dir(repoName) {
-                                                def deployEnv = getActiveDeployEnvironment()
-                                                deployEnv = (deployEnv == 'blue') ? 'green' : 'blue'
-                                                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                                                    echo "Switching traffic to ${deployEnv} for ${repoName}"
-                                                    sh """
-                                                        kubectl patch service ${repoName}-service -n ${repoName} -p '{"spec":{"selector":{"app":"${repoName}", "version":"${deployEnv}"}}}'
-                                                    """
-                                                    sh "echo ${deployEnv} > DEPLOY_ENV"
-                                                    echo "Traffic switched to ${deployEnv} for ${repoName}"
-                                                }
-                                            }
-                                        }
-                                    }
-                                    stage("Verify Deployment for ${repoName}") {
-                                        script {
-                                            dir(repoName) {
-                                                def deployEnv = getActiveDeployEnvironment()
-                                                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                                                    def SVC_EXTERNAL_IP = sh(script: "kubectl get svc ${repoName}-service -n ${repoName} -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
-                                                    def SVC_PORT = sh(script: "kubectl get svc ${repoName}-service -n ${repoName} -o jsonpath='{.spec.ports[0].port}'", returnStdout: true).trim()
-
-                                                    def isServiceAvailable = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://${SVC_EXTERNAL_IP}:${SVC_PORT}", returnStatus: true)
-                                                    if (isServiceAvailable == 0) {
-                                                        echo "[${repoName}] Service is available at http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
-                                                    } else {
-                                                        error "[${repoName}] Service is not available at http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
-                                                    }
+                                                withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+                                                    echo "Pushing Docker image for ${repoName} to Docker Hub"
+                                                    sh "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin"
+                                                    sh "docker push ${dockerImage}:${deployEnv}"
                                                 }
                                             }
                                         }
                                     }
                                 }
-                            } else {
-                                echo "No changes detected in ${repoName}, skipping build."
+                                stage("Deploying ${repoName}") {
+                                    script {
+                                        dir(repoName) {
+                                            def deployEnv = getActiveDeployEnvironment()
+                                            sh "cp -f ../${terraformFile} ."
+                                            if (!fileExists('.terraform')) {
+                                                sh 'terraform init'
+                                            }
+                                            withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                                                echo "Deploying to Kubernetes for repository: ${repoName} on ${deployEnv} using Terraform"
+                                                sh """
+                                                    terraform workspace select -or-create=true ${repoName}-${deployEnv}
+                                                    terraform apply -auto-approve \
+                                                    -var 'app_name=${repoName}-${deployEnv}' \
+                                                    -var 'namespace_name=${repoName}' \
+                                                    -var 'docker_image=${dockerImage}:${deployEnv}' \
+                                                    -var 'build_number=${env.BUILD_ID}' \
+                                                    -var 'app_version=${deployEnv}' \
+                                                    -var 'service_name=${repoName}-service' \
+                                                    -var 'public_port=${publicPort}' \
+                                                    --lock=false
+                                                """
+                                            }
+                                        }
+                                    }
+                                }
+                                stage("Switch Traffic Between Blue & Green Environment for ${repoName}") {
+                                    when {
+                                        expression { params.SWITCH_TRAFFIC == true }
+                                    }
+                                    script {
+                                        dir(repoName) {
+                                            def deployEnv = getActiveDeployEnvironment()
+                                            deployEnv = (deployEnv == 'blue') ? 'green' : 'blue'
+                                            withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                                                echo "Switching traffic to ${deployEnv} for ${repoName}"
+                                                sh """
+                                                    kubectl patch service ${repoName}-service -n ${repoName} -p '{"spec":{"selector":{"app":"${repoName}", "version":"${deployEnv}"}}}'
+                                                """
+                                                sh "echo ${deployEnv} > DEPLOY_ENV"
+                                                echo "Traffic switched to ${deployEnv} for ${repoName}"
+                                            }
+                                        }
+                                    }
+                                }
+                                stage("Verify Deployment for ${repoName}") {
+                                    script {
+                                        dir(repoName) {
+                                            def deployEnv = getActiveDeployEnvironment()
+                                            withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                                                def SVC_EXTERNAL_IP = sh(script: "kubectl get svc ${repoName}-service -n ${repoName} -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
+                                                def SVC_PORT = sh(script: "kubectl get svc ${repoName}-service -n ${repoName} -o jsonpath='{.spec.ports[0].port}'", returnStdout: true).trim()
+
+                                                def isServiceAvailable = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://${SVC_EXTERNAL_IP}:${SVC_PORT}", returnStatus: true)
+                                                if (isServiceAvailable == 0) {
+                                                    echo "[${repoName}] Service is available at http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
+                                                } else {
+                                                    error "[${repoName}] Service is not available at http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
+                            
                         }
                     }
 
@@ -183,7 +207,6 @@ pipeline {
                         echo 'No repositories had changes. No builds to run.'
                     }
 
-                    env.ANY_REPO_HAS_CHANGES = anyRepoHasChanges.toString()
                 }
             }
         }
