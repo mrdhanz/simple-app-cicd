@@ -2,8 +2,6 @@ pipeline {
     agent any
 
     parameters {
-        choice(name: 'DEPLOY_ENV', choices: ['blue', 'green'], defaultValue: 'blue', description: 'Choose which environment to deploy: Blue or Green'),
-        choice(name: 'DOCKER_TAG', choices: ['blue', 'green'], defaultValue: 'blue', description: 'Choose the Docker image tag for the deployment')
         booleanParam(name: 'SWITCH_TRAFFIC', defaultValue: false, description: 'Switch traffic between Blue and Green')
     }
 
@@ -11,7 +9,7 @@ pipeline {
         KUBE_CONFIG = credentials('kubeconfig')
         DOCKER_CREDENTIALS_ID = 'docker-credentials'
         REPO_JSON_FILE = 'apps/repositories.json'
-        TAG = "${params.DOCKER_TAG}"
+        DEPLOY_ENV = "blue"
     }
 
     tools {
@@ -101,6 +99,8 @@ pipeline {
                                             withEnv(envVars) {
                                                 // Build steps for the repository
                                                 dir(repoName) {
+                                                    def deployEnv = getActiveDeployEnvironment()
+
                                                     // Install dependencies and build the project
                                                     echo "Installing dependencies for ${repoName}"
                                                     sh "${installCommand}"
@@ -108,13 +108,13 @@ pipeline {
                                                     sh "${buildCommand}"
                                                     echo "Building Docker image for ${repoName}"
                                                     // Docker build using the current directory context
-                                                    sh "docker build -t ${dockerImage}:${TAG} -f ${dockerFile} ."
+                                                    sh "docker build -t ${dockerImage}:${deployEnv} -f ${dockerFile} ."
 
                                                     // Docker login and push the image
                                                     withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
                                                         echo "Pushing Docker image for ${repoName} to Docker Hub"
                                                         sh "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin"
-                                                        sh "docker push ${dockerImage}:${TAG}"
+                                                        sh "docker push ${dockerImage}:${deployEnv}"
                                                     }
                                                 }
                                             }
@@ -124,6 +124,7 @@ pipeline {
                                         script {
                                             // Use 'dir' to isolate each repository workspace
                                             dir(repoName) {
+                                                def deployEnv = getActiveDeployEnvironment()
                                                 // Copy main.tf to the repository directory
                                                 sh "cp ../${terraformFile} ."
                                                 // Check if terraform has init or not
@@ -131,26 +132,24 @@ pipeline {
                                                     sh 'terraform init'
                                                 }
                                                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                                                    echo "Deploying to Kubernetes for repository: ${repoName} on ${params.DEPLOY_ENV} using Terraform"
+                                                    echo "Deploying to Kubernetes for repository: ${repoName} on ${deployEnv} using Terraform"
                                                     sh """
                                                         terraform workspace select -or-create=true ${repoName}
                                                         terraform apply -auto-approve \
-                                                        -var 'app_name=${repoName}-${params.DEPLOY_ENV}' \
+                                                        -var 'app_name=${repoName}-${deployEnv}' \
                                                         -var 'namespace_name=${repoName}' \
-                                                        -var 'public_port=${publicPort}' \
-                                                        -var 'docker_image=${dockerImage}:${TAG}' \
+                                                        -var 'docker_image=${dockerImage}:${deployEnv}' \
                                                         -var 'build_number=${env.BUILD_ID}' \
-                                                        -var 'app_version=${params.DEPLOY_ENV}' \
-                                                        -var 'service_name=${repoName}-service' \
+                                                        -var 'app_version=${deployEnv}' \
                                                         --lock=false
                                                     """
-                                                    echo "Deploying service for ${repoName} on ${params.DEPLOY_ENV}"
+                                                    echo "Deploying service for ${repoName} on ${deployEnv}"
                                                     sh """
                                                         terraform workspace select -or-create=true ${repoName}
                                                         terraform apply service.tf -auto-approve \
                                                         -var 'namespace_name=${repoName}' \
                                                         -var 'public_port=${publicPort}' \
-                                                        -var 'app_version=${params.DEPLOY_ENV}' \
+                                                        -var 'app_version=${deployEnv}' \
                                                         -var 'service_name=${repoName}-service' \
                                                         --lock=false
                                                     """
@@ -164,11 +163,20 @@ pipeline {
                                         }
                                         script {
                                             dir(repoName) {
+                                                def deployEnv = getActiveDeployEnvironment()
+                                                if (deployEnv == 'blue') {
+                                                    deployEnv = 'green'
+                                                } else {
+                                                    deployEnv = 'blue'
+                                                }
+                                                // replace the content of DEPLOY_ENV file
                                                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                                                    echo "Switching traffic to ${params.DEPLOY_ENV} for ${repoName}"
+                                                    echo "Switching traffic to ${deployEnv} for ${repoName}"
                                                     sh """
-                                                        kubectl patch service ${repoName}-service -n ${repoName} -p '{"spec":{"selector":{"app":"${repoName}"}", "version":"${params.DEPLOY_ENV}"}}}'
+                                                        kubectl patch service ${repoName}-service -n ${repoName} -p '{"spec":{"selector":{"app":"${repoName}"}", "version":"${deployEnv}"}}}'
                                                     """
+                                                    sh "echo ${deployEnv} > DEPLOY_ENV"
+                                                    echo "Traffic switched to ${deployEnv} for ${repoName}"
                                                 }
                                             }
                                         }
@@ -177,6 +185,7 @@ pipeline {
                                         script {
                                             // Use 'dir' to isolate each repository workspace
                                             dir(repoName) {
+                                                def deployEnv = getActiveDeployEnvironment()
                                                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                                                     def SVC_EXTERNAL_IP = script {
                                                         return sh(script: "kubectl get svc ${repoName}-service -n ${repoName} -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
@@ -185,13 +194,11 @@ pipeline {
                                                         return sh(script: "kubectl get svc ${repoName}-service -n ${repoName} -o jsonpath='{.spec.ports[0].port}'", returnStdout: true).trim()
                                                     }
 
-                                                    echo "Service is available at http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
-
                                                     def isServiceAvailable = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://${SVC_EXTERNAL_IP}:${SVC_PORT}", returnStatus: true)
                                                     if (isServiceAvailable == 0) {
-                                                        echo "Smoke test passed for ${repoName}"
+                                                        echo "[${repoName}] Service is available at http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
                                                     } else {
-                                                        error "Smoke test failed for ${repoName}"
+                                                        error "[${repoName}] Service is not available at http://${SVC_EXTERNAL_IP}:${SVC_PORT}"
                                                     }
                                                 }
                                             }
@@ -216,4 +223,12 @@ pipeline {
             }
         }
     }
+}
+
+private def getActiveDeployEnvironment() {
+    if (!fileExists('DEPLOY_ENV')) {
+        echo "Creating DEPLOY_ENV file for ${repoName}"
+        sh "echo ${env.DEPLOY_ENV} > DEPLOY_ENV"
+    }
+    return readFile('DEPLOY_ENV').trim()
 }
