@@ -192,6 +192,7 @@ pipeline {
                                                         kubectl patch service ${repoName}-service -n ${repoName} -p '{"spec":{"selector":{"app":"${repoName}-${deployEnv}", "version":"${deployEnv}"}}}'
                                                     """
                                                     sh "echo ${deployEnv} > DEPLOY_ENV"
+                                                    sh "echo ${deployEnv} > ../DEPLOY_ENV"
                                                     echo "Traffic switched to ${deployEnv} for ${repoName}"
                                                 }
                                             }
