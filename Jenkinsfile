@@ -52,6 +52,7 @@ pipeline {
                         def publicPort = repo.env.PORT
                         def targetPort = repo.env.LOCAL_PORT
                         def terraformFile = repo.terraform_file
+                        def repoEnv = getActiveDeployFromRepoName(repoName)
 
                         dir(repoName) {
                             def hasChanges = '0'
@@ -78,7 +79,7 @@ pipeline {
 
                             parallelStages[repoName] = {
                                 if(env."${repoName}_HAS_CHANGES" == 'true' || hasChanges == '1') {
-                                    stage("Building ${repoName}") {
+                                    stage("Building ${repoName} on ${repoEnv}") {
                                         script {
                                             def envVars = []
                                             if (environment != null) {
@@ -91,6 +92,7 @@ pipeline {
                                             withEnv(envVars) {
                                                 dir(repoName) {
                                                     def deployEnv = getActiveDeployEnvironment()
+                                                    env."${repoName}_DEPLOY_ENV" = deployEnv
                                                     echo "Installing dependencies for ${repoName}"
                                                     sh "${installCommand}"
                                                     echo "Building project for ${repoName}"
@@ -110,7 +112,7 @@ pipeline {
                                 } else {
                                     echo "No changes detected in ${repoName}. Skipping build."
                                 }
-                                stage("Deploying ${repoName}") {
+                                stage("Deploying ${repoName} to Kubernetes on ${repoEnv}") {
                                     script {
                                         dir(repoName) {
                                             def deployEnv = getActiveDeployEnvironment()
@@ -171,7 +173,7 @@ pipeline {
                                             withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                                                 sh """
                                                     kubectl get pods -n ${repoName} -l app=${repoName}-${deployEnv}
-                                                    kubectl get svc ${repoName}-service -n ${repoName}
+                                                    kubectl describe svc ${repoName}-service -n ${repoName}
                                                 """
                                             }
                                         }
@@ -200,4 +202,8 @@ private def getActiveDeployEnvironment() {
         sh "echo ${env.DEPLOY_ENV} > DEPLOY_ENV"
     }
     return readFile('DEPLOY_ENV').trim()
+}
+
+private def getActiveDeployFromRepoName(repoName) {
+    return env."${repoName}_DEPLOY_ENV"
 }
