@@ -52,7 +52,7 @@ pipeline {
                         def publicPort = repo.env.PORT
                         def targetPort = repo.env.LOCAL_PORT
                         def terraformFile = repo.terraform_file
-                        def repoEnv = getActiveDeployFromRepoName(repoName)
+                        def repoEnv = getActiveDeployFromRepoName(repoName, params.SWITCH_TRAFFIC)
 
                         dir(repoName) {
                             def hasChanges = '0'
@@ -78,7 +78,7 @@ pipeline {
                             }
 
                             parallelStages[repoName] = {
-                                if(env."${repoName}_HAS_CHANGES" == 'true' || hasChanges == '1') {
+                                if(env."${repoName}_HAS_CHANGES" == 'true' || hasChanges == '1' && (params.SWITCH_TRAFFIC != true && repoEnv != "green")) {
                                     stage("Building ${repoName} on ${repoEnv}") {
                                         script {
                                             def envVars = []
@@ -98,12 +98,13 @@ pipeline {
                                                     echo "Building project for ${repoName}"
                                                     sh "${buildCommand}"
                                                     echo "Building Docker image for ${repoName}"
-                                                    sh "docker build -t ${dockerImage}:${deployEnv} -f ${dockerFile} ."
+                                                    sh "docker build -t ${dockerImage}:${deployEnv}-${env.BUILD_ID} -f ${dockerFile} ."
 
                                                     withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
                                                         echo "Pushing Docker image for ${repoName} to Docker Hub"
                                                         sh "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin"
-                                                        sh "docker push ${dockerImage}:${deployEnv}"
+                                                        sh "docker push ${dockerImage}:${deployEnv}-${env.BUILD_ID}"
+                                                        sh "docker logout"
                                                     }
                                                 }
                                             }
@@ -112,38 +113,40 @@ pipeline {
                                 } else {
                                     echo "No changes detected in ${repoName}. Skipping build."
                                 }
-                                stage("Deploying ${repoName} to Kubernetes on ${repoEnv}") {
-                                    script {
-                                        dir(repoName) {
-                                            def deployEnv = getActiveDeployEnvironment()
-                                            sh "cp -f ../${terraformFile} ."
-                                            if (!fileExists('.terraform')) {
-                                                sh 'terraform init'
-                                            }
-                                            withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                                                echo "Deploying to Kubernetes for repository: ${repoName} on ${deployEnv} using Terraform"
-                                                sh """
-                                                    kubectl create namespace ${repoName} --dry-run=client -o yaml | kubectl apply -f -
-                                                """
-                                                sh """
-                                                    if ! kubectl get svc ${repoName}-service -n ${repoName}; then
-                                                        kubectl create service loadbalancer ${repoName}-service --tcp=${publicPort}:${targetPort} --dry-run=client -o yaml | \\
-                                                        kubectl apply -f - -n ${repoName}
-                                                        kubectl patch service ${repoName}-service -n ${repoName} -p '{"spec":{"selector":{"app":"${repoName}-${deployEnv}", "version":"${deployEnv}"}}}'
-                                                    fi
-                                                """
-                                                sh """
-                                                    terraform workspace select -or-create=true ${repoName}-${deployEnv}
-                                                    terraform apply -auto-approve \
-                                                    -var 'app_name=${repoName}-${deployEnv}' \
-                                                    -var 'namespace_name=${repoName}' \
-                                                    -var 'docker_image=${dockerImage}:${deployEnv}' \
-                                                    -var 'build_number=${env.BUILD_ID}' \
-                                                    -var 'app_version=${deployEnv}' \
-                                                    -var 'service_name=${repoName}-service' \
-                                                    -var 'public_port=${publicPort}' \
-                                                    --lock=false
-                                                """
+                                if (params.SWITCH_TRAFFIC != true && repoEnv != "green") {
+                                    stage("Deploying ${repoName} to Kubernetes on ${repoEnv}") {
+                                        script {
+                                            dir(repoName) {
+                                                def deployEnv = getActiveDeployEnvironment()
+                                                sh "cp -f ../${terraformFile} ."
+                                                if (!fileExists('.terraform')) {
+                                                    sh 'terraform init'
+                                                }
+                                                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                                                    echo "Deploying to Kubernetes for repository: ${repoName} on ${deployEnv} using Terraform"
+                                                    sh """
+                                                        kubectl create namespace ${repoName} --dry-run=client -o yaml | kubectl apply -f -
+                                                    """
+                                                    sh """
+                                                        if ! kubectl get svc ${repoName}-service -n ${repoName}; then
+                                                            kubectl create service loadbalancer ${repoName}-service --tcp=${publicPort}:${targetPort} --dry-run=client -o yaml | \\
+                                                            kubectl apply -f - -n ${repoName}
+                                                            kubectl patch service ${repoName}-service -n ${repoName} -p '{"spec":{"selector":{"app":"${repoName}-${deployEnv}", "version":"${deployEnv}"}}}'
+                                                        fi
+                                                    """
+                                                    sh """
+                                                        terraform workspace select -or-create=true ${repoName}-${deployEnv}
+                                                        terraform apply -auto-approve \
+                                                        -var 'app_name=${repoName}-${deployEnv}' \
+                                                        -var 'namespace_name=${repoName}' \
+                                                        -var 'docker_image=${dockerImage}:${deployEnv}-${env.BUILD_ID}' \
+                                                        -var 'build_number=${env.BUILD_ID}' \
+                                                        -var 'app_version=${deployEnv}' \
+                                                        -var 'service_name=${repoName}-service' \
+                                                        -var 'public_port=${publicPort}' \
+                                                        --lock=false
+                                                    """
+                                                }
                                             }
                                         }
                                     }
@@ -204,12 +207,16 @@ private def getActiveDeployEnvironment() {
     return readFile('DEPLOY_ENV').trim()
 }
 
-private def getActiveDeployFromRepoName(repoName) {
+private def getActiveDeployFromRepoName(repoName, switchTraffic) {
     def currentDir = pwd()
     def repoDir = "${currentDir}/${repoName}"
     if (!fileExists("${repoDir}/DEPLOY_ENV")) {
         echo "Creating DEPLOY_ENV file for ${repoName}"
         sh "echo ${env.DEPLOY_ENV} > ${repoDir}/DEPLOY_ENV"
     }
-    return readFile("${repoDir}/DEPLOY_ENV").trim()
+    def currentEnv = readFile("${repoDir}/DEPLOY_ENV").trim()
+    if (switchTraffic) {
+        return (currentEnv == 'blue') ? 'green' : 'blue'
+    }
+    return currentEnv
 }
