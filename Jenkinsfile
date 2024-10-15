@@ -78,7 +78,7 @@ pipeline {
                             }
 
                             parallelStages[repoName] = {
-                                if(env."${repoName}_HAS_CHANGES" == 'true' || hasChanges == '1' && (params.SWITCH_TRAFFIC != true && repoEnv != "green")) {
+                                if(env."${repoName}_HAS_CHANGES" == 'true' || hasChanges == '1' && (params.SWITCH_TRAFFIC != true || repoEnv == 'green' || !isDeployedToKubernetes(repoName, repoEnv))) {
                                     stage("Building ${repoName} on ${repoEnv}") {
                                         script {
                                             def envVars = []
@@ -113,7 +113,7 @@ pipeline {
                                 } else {
                                     echo "No changes detected in ${repoName}. Skipping build."
                                 }
-                                if (params.SWITCH_TRAFFIC != true && repoEnv != "green") {
+                                if (params.SWITCH_TRAFFIC != true || repoEnv == 'green' || !isDeployedToKubernetes(repoName, repoEnv)) {
                                     stage("Deploying ${repoName} to Kubernetes on ${repoEnv}") {
                                         script {
                                             dir(repoName) {
@@ -223,4 +223,11 @@ private def getActiveDeployFromRepoName(repoName, switchTraffic) {
         return (currentEnv == 'blue') ? 'green' : 'blue'
     }
     return currentEnv
+}
+
+private def isDeployedToKubernetes(repoName, deployEnv) {
+    withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+        def result = sh(script: "kubectl get pods -n ${repoName} -l app=${repoName}-${deployEnv}", returnStatus: true)
+        return result == 0
+    }
 }
