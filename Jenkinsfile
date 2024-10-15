@@ -105,7 +105,6 @@ pipeline {
                                                     sh "${buildCommand}"
                                                     // add key value or replace value to env file
                                                     if (environment.ENV_FILE != null) {
-                                                        // add or replace APP_VERSION to .env file
                                                         sh "echo '\\nBUILD_VERSION=${deployEnv}-${env.BUILD_ID}' >> .env"
                                                     }
                                                     echo "Building Docker image for ${repoName}"
@@ -179,13 +178,14 @@ pipeline {
                                         }
                                     }
                                 }
-                                stage("Verify Deployment for ${repoName}") {
+                                stage("Verify Deployment for ${repoName} on ${repoEnv}") {
                                     script {
                                         dir(repoName) {
-                                            def deployEnv = getActiveDeployEnvironment(params.SWITCH_TRAFFIC)
+                                            def deployEnv = getActiveDeployEnvironment(false)
                                             withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                                                 sh """
                                                     kubectl get pods -n ${repoName} -l app=${repoName}-${deployEnv}
+                                                    kubectl describe pods -n ${repoName} -l app=${repoName}-${deployEnv}
                                                     kubectl describe svc ${repoName}-service -n ${repoName}
                                                 """
                                             }
