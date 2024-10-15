@@ -85,13 +85,12 @@ pipeline {
                                             def envVars = []
                                             if (environment != null) {
                                                 echo "Setting environment variables for ${repoName}"
-                                                envVars = environment.collect { key, value -> {
+                                                envVars = environment.collect { key, value -> 
                                                     if (key.contains("CLIENT_ID")){
                                                         return "${key}=${value} | build-${env.BUILD_ID}-${repoEnv}"
                                                     } else {
                                                         return "${key}=${value}"
-                                                    }
-                                                } }
+                                                    }}
                                                 if (environment.ENV_FILE != null) {
                                                     sh "cp -f ${environment.ENV_FILE} ${repoName}/.env"
                                                 }
