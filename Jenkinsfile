@@ -210,6 +210,10 @@ private def getActiveDeployEnvironment() {
 private def getActiveDeployFromRepoName(repoName, switchTraffic) {
     def currentDir = pwd()
     def repoDir = "${currentDir}/${repoName}"
+    if (!fileExists(repoDir)) {
+        echo "Creating directory for ${repoName}"
+        sh "mkdir -p ${repoDir}"
+    }
     if (!fileExists("${repoDir}/DEPLOY_ENV")) {
         echo "Creating DEPLOY_ENV file for ${repoName}"
         sh "echo ${env.DEPLOY_ENV} > ${repoDir}/DEPLOY_ENV"
