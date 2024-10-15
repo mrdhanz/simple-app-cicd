@@ -135,7 +135,9 @@ pipeline {
                                                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                                                     echo "Deploying to Kubernetes for repository: ${repoName} on ${deployEnv} using Terraform"
                                                     sh """
-                                                        kubectl create namespace ${repoName} --dry-run=client -o yaml | kubectl apply -f -
+                                                        if ! kubectl get namespace ${repoName}; then
+                                                            kubectl create namespace ${repoName}
+                                                        fi
                                                     """
                                                     sh """
                                                         if ! kubectl get svc ${repoName}-service -n ${repoName}; then
