@@ -7,7 +7,7 @@ properties([
             def deployEnvFile = "${currentDir}/DEPLOY_ENV"
             echo "Deploy Env File: ${deployEnvFile}" > param.log
             return (fileExists(deployEnvFile)) ? [readFile(deployEnvFile).trim()] : ['blue']
-            ''']),
+            ''']
         ])
     ])
 
