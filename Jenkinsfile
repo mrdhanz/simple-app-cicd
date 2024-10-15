@@ -1,16 +1,3 @@
-properties([
-    parameters([
-        reactiveChoice(choiceType: 'PT_SINGLE_SELECT', description: 'Current traffic on:', filterLength: 1, filterable: false, 
-        name: 'CURRENT_TRAFFIC', randomName: 'choice-parameter-1795658162080615', referencedParameters: '', 
-        script: groovyScript(fallbackScript: [classpath: [], oldScript: '', sandbox: false, script: 'return [\'blue\']'], 
-        script: [classpath: [], oldScript: '', sandbox: false, script: '''def currentDir = pwd()
-            def deployEnvFile = "${currentDir}/DEPLOY_ENV"
-            echo "Deploy Env File: ${deployEnvFile}" > param.log
-            return (fileExists(deployEnvFile)) ? [readFile(deployEnvFile).trim()] : ['blue']
-            ''']
-        ])
-    ])
-
 pipeline {
     agent any
 
