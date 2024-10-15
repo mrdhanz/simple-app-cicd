@@ -1,22 +1,3 @@
-properties([
-    parameters([
-        reactiveChoice(choiceType: 'PT_SINGLE_SELECT', description: 'Select the deployment environment (Blue or Green).', filterLength: 1, filterable: false, 
-        name: 'DEPLOY_ENV', randomName: 'choice-parameter-1795658162080615', referencedParameters: '', 
-        script: groovyScript(fallbackScript: [classpath: [], oldScript: '', sandbox: false, script: 'return [\'blue\', \'green\']'], 
-        script: [classpath: [], oldScript: '', sandbox: false, script: '''def deployEnvFile = new File(\'/var/lib/jenkins/workspace/DEPLOY_ENV\')
-            def currentEnv = \'blue\'
-            if (deployEnvFile.exists()) {
-                currentEnv = deployEnvFile.text.trim()
-            } else {
-                echo "Creating DEPLOY_ENV file"
-                sh "echo ${currentEnv} > /var/lib/jenkins/workspace/DEPLOY_ENV"
-            }
-            def nextEnv = currentEnv == \'blue\' ? \'green\' : \'blue\'
-            return [currentEnv, nextEnv]'''
-            ]))
-        ])
-    ])
-
 pipeline {
     agent any
 
@@ -28,7 +9,7 @@ pipeline {
         KUBE_CONFIG = credentials('kubeconfig')
         DOCKER_CREDENTIALS_ID = 'docker-credentials'
         REPO_JSON_FILE = 'apps/repositories.json'
-        DEPLOY_ENV = "${params.DEPLOY_ENV}"
+        DEPLOY_ENV = "blue"
     }
 
     tools {
@@ -214,9 +195,9 @@ pipeline {
 }
 
 private def getActiveDeployEnvironment() {
-    if (!fileExists('/var/lib/jenkins/workspace/DEPLOY_ENV')) {
+    if (!fileExists('DEPLOY_ENV')) {
         echo "Creating DEPLOY_ENV file"
-        sh "echo ${env.DEPLOY_ENV} > /var/lib/jenkins/workspace/DEPLOY_ENV"
+        sh "echo ${env.DEPLOY_ENV} > DEPLOY_ENV"
     }
-    return readFile('/var/lib/jenkins/workspace/DEPLOY_ENV').trim()
+    return readFile('DEPLOY_ENV').trim()
 }
