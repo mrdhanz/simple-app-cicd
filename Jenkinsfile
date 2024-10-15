@@ -97,7 +97,7 @@ pipeline {
                                             }
                                             withEnv(envVars) {
                                                 dir(repoName) {
-                                                    def deployEnv = getActiveDeployEnvironment()
+                                                    def deployEnv = getActiveDeployEnvironment(params.SWITCH_TRAFFIC)
                                                     env."${repoName}_DEPLOY_ENV" = deployEnv
                                                     echo "Installing dependencies for ${repoName}"
                                                     sh "${installCommand}"
@@ -128,7 +128,7 @@ pipeline {
                                     stage("Deploying ${repoName} to Kubernetes on ${repoEnv}") {
                                         script {
                                             dir(repoName) {
-                                                def deployEnv = getActiveDeployEnvironment()
+                                                def deployEnv = getActiveDeployEnvironment(params.SWITCH_TRAFFIC)
                                                 sh "cp -f ../${terraformFile} ."
                                                 if (!fileExists('.terraform')) {
                                                     sh 'terraform init'
@@ -166,8 +166,7 @@ pipeline {
                                     stage("Switch Traffic Between Blue & Green Environment for ${repoName}") {
                                         script {
                                             dir(repoName) {
-                                                def deployEnv = getActiveDeployEnvironment()
-                                                deployEnv = (deployEnv == 'blue') ? 'green' : 'blue'
+                                                def deployEnv = getActiveDeployEnvironment(params.SWITCH_TRAFFIC)
                                                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                                                     echo "Switching traffic to ${deployEnv} for ${repoName}"
                                                     sh """
@@ -183,7 +182,7 @@ pipeline {
                                 stage("Verify Deployment for ${repoName}") {
                                     script {
                                         dir(repoName) {
-                                            def deployEnv = getActiveDeployEnvironment()
+                                            def deployEnv = getActiveDeployEnvironment(params.SWITCH_TRAFFIC)
                                             withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                                                 sh """
                                                     kubectl get pods -n ${repoName} -l app=${repoName}-${deployEnv}
@@ -210,12 +209,16 @@ pipeline {
     }
 }
 
-private def getActiveDeployEnvironment() {
+private def getActiveDeployEnvironment(switchTraffic) {
     if (!fileExists('DEPLOY_ENV')) {
         echo "Creating DEPLOY_ENV file"
         sh "echo ${env.DEPLOY_ENV} > DEPLOY_ENV"
     }
-    return readFile('DEPLOY_ENV').trim()
+    def currentEnv = readFile('DEPLOY_ENV').trim()
+    if(switchTraffic){
+        return (currentEnv == 'blue') ? 'green' : 'blue'
+    }
+    return currentEnv
 }
 
 private def getActiveDeployFromRepoName(repoName, switchTraffic) {
