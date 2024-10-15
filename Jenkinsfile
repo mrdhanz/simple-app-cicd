@@ -5,6 +5,7 @@ properties([
         script: groovyScript(fallbackScript: [classpath: [], oldScript: '', sandbox: false, script: 'return [\'blue\']'], 
         script: [classpath: [], oldScript: '', sandbox: false, script: '''def currentDir = pwd()
             def deployEnvFile = "${currentDir}/DEPLOY_ENV"
+            echo "Deploy Env File: ${deployEnvFile}" > param.log
             return (fileExists(deployEnvFile)) ? [readFile(deployEnvFile).trim()] : ['blue']
             ''']),
         ])
