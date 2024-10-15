@@ -105,7 +105,7 @@ pipeline {
                                                     sh "${buildCommand}"
                                                     // add key value or replace value to env file
                                                     if (environment.ENV_FILE != null) {
-                                                        sh "echo '\\nBUILD_VERSION=${deployEnv}-${env.BUILD_ID}' >> .env"
+                                                        sh "printf '\\nBUILD_VERSION=${deployEnv}-${env.BUILD_ID}' >> .env"
                                                     }
                                                     echo "Building Docker image for ${repoName}"
                                                     sh "docker build -t ${dockerImage}:${deployEnv}-${env.BUILD_ID} -f ${dockerFile} ."
