@@ -205,5 +205,11 @@ private def getActiveDeployEnvironment() {
 }
 
 private def getActiveDeployFromRepoName(repoName) {
-    return env."${repoName}_DEPLOY_ENV"
+    def currentDir = pwd()
+    def repoDir = "${currentDir}/${repoName}"
+    if (!fileExists("${repoDir}/DEPLOY_ENV")) {
+        echo "Creating DEPLOY_ENV file for ${repoName}"
+        sh "echo ${env.DEPLOY_ENV} > ${repoDir}/DEPLOY_ENV"
+    }
+    return readFile("${repoDir}/DEPLOY_ENV").trim()
 }
