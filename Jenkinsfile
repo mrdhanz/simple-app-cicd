@@ -1,3 +1,23 @@
+properties([
+    parameters([
+        reactiveChoice(choiceType: 'PT_SINGLE_SELECT', description: 'Current environment:', filterLength: 1, filterable: false, 
+        name: 'CURRENT_ENV', randomName: 'choice-parameter-1795658162080615', referencedParameters: '', 
+        script: groovyScript(fallbackScript: [classpath: [], oldScript: '', sandbox: false, script: 'return [\'blue\']'], 
+        script: [classpath: [], oldScript: '', sandbox: false, script: '''def currentDir = pwd()
+            def deployEnvFile = new File("${currentDir}/DEPLOY_ENV")
+            def currentEnv = \'blue\'
+            if (deployEnvFile.exists()) {
+                currentEnv = deployEnvFile.text.trim()
+            } else {
+                echo "Creating DEPLOY_ENV file"
+                sh "echo ${currentEnv} > ${currentDir}/DEPLOY_ENV"
+            }
+            def nextEnv = currentEnv == \'blue\' ? \'green\' : \'blue\'
+            return [currentEnv]'''
+            ]))
+        ])
+    ])
+
 pipeline {
     agent any
 
@@ -213,6 +233,7 @@ private def getActiveDeployEnvironment(switchTraffic) {
     if (!fileExists('DEPLOY_ENV')) {
         echo "Creating DEPLOY_ENV file"
         sh "echo ${env.DEPLOY_ENV} > DEPLOY_ENV"
+        sh "echo ${env.DEPLOY_ENV} > ../DEPLOY_ENV"
     }
     def currentEnv = readFile('DEPLOY_ENV').trim()
     if(switchTraffic){
