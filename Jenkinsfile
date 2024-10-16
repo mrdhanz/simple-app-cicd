@@ -124,7 +124,7 @@ pipeline {
                                 } else {
                                     echo "No changes detected in ${repoName}. Skipping build."
                                 }
-                                if (params.SWITCH_TRAFFIC != true || repoEnv == 'green' || !isDeployedToKubernetes(repoName, repoEnv)  && !params.ROLLBACK) {
+                                if ((params.SWITCH_TRAFFIC != true || repoEnv == 'green' || !isDeployedToKubernetes(repoName, repoEnv))  && !params.ROLLBACK) {
                                     stage("Deploying ${repoName} to Kubernetes on ${repoEnv}") {
                                         script {
                                             dir(repoName) {
