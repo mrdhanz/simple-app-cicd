@@ -275,7 +275,7 @@ private def isDeployedToKubernetes(repoName, deployEnv) {
 private def updatePropertiesCurrentEnv(env, params){
     properties([
         parameters([
-            choice(choices: [env], description: 'Current Environment:', name: 'CURRENT_ENV')
+            choice(choices: [env], description: 'Current Environment:', name: 'CURRENT_ENV'),
             booleanParam(defaultValue: params.SWITCH_TRAFFIC, description: 'Switch traffic between Blue and Green Environment (Blue -> Green or Green -> Blue).', name: 'SWITCH_TRAFFIC'),
             booleanParam(defaultValue: params.ROLLBACK, description: 'Rollback deployment between Blue and Green Environment (Blue -> Green or Green -> Blue).', name: 'ROLLBACK'),
         ])
