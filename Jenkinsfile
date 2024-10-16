@@ -4,7 +4,7 @@ pipeline {
     parameters {
         choice(choices: ['blue'], description: 'Current Environment:', name: 'CURRENT_ENV')
         booleanParam(name: 'SWITCH_TRAFFIC', defaultValue: false, description: 'Switch traffic between Blue and Green Environment (Blue -> Green or Green -> Blue).')
-        booleanParam(name: 'ROLLBACK', defaultValue: false, description: 'Rollback deployment between Blue and Green Environment (Blue -> Green or Green -> Blue)')
+        booleanParam(name: 'ROLLBACK', defaultValue: false, description: 'Rollback deployment between Blue and Green Environment (Blue -> Green or Green -> Blue).')
     }
 
     environment {
