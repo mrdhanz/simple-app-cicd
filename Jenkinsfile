@@ -53,7 +53,7 @@ pipeline {
                         def publicPort = repo.env.PORT
                         def targetPort = repo.env.LOCAL_PORT
                         def terraformFile = repo.terraform_file
-                        def repoEnv = getActiveDeployFromRepoName(repoName, params.SWITCH_TRAFFIC)
+                        def repoEnv = getActiveDeployFromRepoName(repoName, params.SWITCH_TRAFFIC || params.ROLLBACK)
 
                         dir(repoName) {
                             def hasChanges = '0'
