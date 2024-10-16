@@ -129,6 +129,7 @@ pipeline {
                                         script {
                                             dir(repoName) {
                                                 def deployEnv = getActiveDeployEnvironment(params.SWITCH_TRAFFIC)
+                                                updatePropertiesCurrentEnv(deployEnv, params)
                                                 sh "cp -f ../${terraformFile} ."
                                                 if (!fileExists('.terraform')) {
                                                     sh 'terraform init'
@@ -177,6 +178,7 @@ pipeline {
                                                     sh "echo ${deployEnv} > DEPLOY_ENV"
                                                     sh "echo ${deployEnv} > ../DEPLOY_ENV"
                                                     echo "Traffic switched to ${deployEnv} for ${repoName}"
+                                                    updatePropertiesCurrentEnv(deployEnv, params)
                                                 }
                                             }
                                         }
@@ -194,6 +196,7 @@ pipeline {
                                                     """
                                                     sh "echo ${deployEnv} > DEPLOY_ENV"
                                                     sh "echo ${deployEnv} > ../DEPLOY_ENV"
+                                                    updatePropertiesCurrentEnv(deployEnv, params)
                                                 }
                                             }
                                         }
@@ -266,4 +269,14 @@ private def isDeployedToKubernetes(repoName, deployEnv) {
         def result = sh(script: "kubectl get pods -n ${repoName} -l app=${repoName}-${deployEnv}", returnStatus: true)
         return result == 0
     }
+}
+
+private def updatePropertiesCurrentEnv(env, params){
+    properties([
+        parameters([
+            booleanParam(defaultValue: false, description: 'Switch traffic between Blue and Green Environment', name: 'SWITCH_TRAFFIC', value: params.SWITCH_TRAFFIC),
+            booleanParam(defaultValue: false, description: 'Rollback deployment between Blue and Green Environment', name: 'ROLLBACK', value: params.ROLLBACK),
+            string(name: 'CURRENT_ENV', value: env)
+        ])
+    ])
 }
