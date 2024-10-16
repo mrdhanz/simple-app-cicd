@@ -2,8 +2,8 @@ pipeline {
     agent any
 
     parameters {
-        booleanParam(name: 'SWITCH_TRAFFIC', defaultValue: false, description: 'Switch traffic between Blue and Green Environment')
-        booleanParam(name: 'ROLLBACK', defaultValue: false, description: 'Rollback deployment between Blue and Green Environment')
+        booleanParam(name: 'SWITCH_TRAFFIC', defaultValue: false, description: 'Switch traffic between Blue and Green Environment (Blue -> Green or Green -> Blue).')
+        booleanParam(name: 'ROLLBACK', defaultValue: false, description: 'Rollback deployment between Blue and Green Environment (Blue -> Green or Green -> Blue)')
     }
 
     environment {
@@ -274,9 +274,9 @@ private def isDeployedToKubernetes(repoName, deployEnv) {
 private def updatePropertiesCurrentEnv(env, params){
     properties([
         parameters([
-            booleanParam(defaultValue: false, description: 'Switch traffic between Blue and Green Environment', name: 'SWITCH_TRAFFIC', value: params.SWITCH_TRAFFIC),
-            booleanParam(defaultValue: false, description: 'Rollback deployment between Blue and Green Environment', name: 'ROLLBACK', value: params.ROLLBACK),
-            string(name: 'CURRENT_ENV', value: env)
+            booleanParam(defaultValue: false, description: 'Switch traffic between Blue and Green Environment (Blue -> Green or Green -> Blue).', name: 'SWITCH_TRAFFIC', value: params.SWITCH_TRAFFIC),
+            booleanParam(defaultValue: false, description: 'Rollback deployment between Blue and Green Environment (Blue -> Green or Green -> Blue).', name: 'ROLLBACK', value: params.ROLLBACK),
+            string(name: 'CURRENT_ENV', value: env, defaultValue: env, description: 'Current Environment')
         ])
     ])
 }
