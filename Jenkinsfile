@@ -79,8 +79,8 @@ pipeline {
                             }
 
                             parallelStages[repoName] = {
-                                if(!isDeployedToKubernetes(repoName, repoEnv) || (env."${repoName}_HAS_CHANGES" == 'true' || hasChanges == '1') || 
-                                    (params.SWITCH_TRAFFIC != true || repoEnv == 'green') && !params.ROLLBACK) {
+                                if((!isDeployedToKubernetes(repoName, repoEnv) || (env."${repoName}_HAS_CHANGES" == 'true' || hasChanges == '1') || 
+                                    (params.SWITCH_TRAFFIC != true || repoEnv == 'green')) && !params.ROLLBACK) {
                                     stage("Building ${repoName} on ${repoEnv}") {
                                         script {
                                             def envVars = []
