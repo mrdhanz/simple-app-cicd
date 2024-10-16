@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     parameters {
-        choice(choices: ['blue'], description: 'Current Environment:', name: 'CURRENT_ENV')
+        choice(name: 'CURRENT_ENV', choices: ['blue'], description: 'Current Environment:')
         booleanParam(name: 'SWITCH_TRAFFIC', defaultValue: false, description: 'Switch traffic between Blue and Green Environment (Blue -> Green or Green -> Blue). \nNote: This will update version & switch the traffic between the two environments.')
         booleanParam(name: 'ROLLBACK', defaultValue: false, description: 'Rollback deployment between Blue and Green Environment (Blue -> Green or Green -> Blue). \nNote: This will only rollback the deployment to the previous environment.')
     }
@@ -130,7 +130,6 @@ pipeline {
                                         script {
                                             dir(repoName) {
                                                 def deployEnv = getActiveDeployEnvironment(params.SWITCH_TRAFFIC)
-                                                updatePropertiesCurrentEnv(deployEnv, params)
                                                 sh "cp -f ../${terraformFile} ."
                                                 if (!fileExists('.terraform')) {
                                                     sh 'terraform init'
@@ -161,6 +160,7 @@ pipeline {
                                                         -var 'public_port=${publicPort}' \
                                                         --lock=false
                                                     """
+                                                    updatePropertiesCurrentEnv(deployEnv, params)
                                                 }
                                             }
                                         }
@@ -198,6 +198,7 @@ pipeline {
                                                     sh "echo ${deployEnv} > DEPLOY_ENV"
                                                     sh "echo ${deployEnv} > ../DEPLOY_ENV"
                                                     updatePropertiesCurrentEnv(deployEnv, params)
+                                                    hideRollbackProps(deployEnv, params)
                                                 }
                                             }
                                         }
@@ -277,7 +278,16 @@ private def updatePropertiesCurrentEnv(env, params){
         parameters([
             choice(choices: [env], description: 'Current Environment:', name: 'CURRENT_ENV'),
             booleanParam(defaultValue: params.SWITCH_TRAFFIC, description: 'Switch traffic between Blue and Green Environment (Blue -> Green or Green -> Blue). \nNote: This will update version & switch the traffic between the two environments.', name: 'SWITCH_TRAFFIC'),
-            booleanParam(defaultValue: params.ROLLBACK, description: 'Rollback deployment between Blue and Green Environment (Blue -> Green or Green -> Blue). \nNote: This will only rollback the deployment to the previous environment.', name: 'ROLLBACK'),
+            booleanParam(defaultValue: params.ROLLBACK, description: 'Rollback deployment between Blue and Green Environment (Blue -> Green or Green -> Blue). \nNote: This will only 1x rollback the deployment to the previous environment.', name: 'ROLLBACK'),
+        ])
+    ])
+}
+
+private def hideRollbackProps(env, params){
+    properties([
+        parameters([
+            choice(choices: [env], description: 'Current Environment:', name: 'CURRENT_ENV'),
+            booleanParam(defaultValue: params.SWITCH_TRAFFIC, description: 'Switch traffic between Blue and Green Environment (Blue -> Green or Green -> Blue). \nNote: This will update version & switch the traffic between the two environments.', name: 'SWITCH_TRAFFIC'),
         ])
     ])
 }
