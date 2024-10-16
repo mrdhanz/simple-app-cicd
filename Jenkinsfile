@@ -4,6 +4,7 @@ pipeline {
     parameters {
         booleanParam(name: 'SWITCH_TRAFFIC', defaultValue: false, description: 'Switch traffic between Blue and Green Environment (Blue -> Green or Green -> Blue).')
         booleanParam(name: 'ROLLBACK', defaultValue: false, description: 'Rollback deployment between Blue and Green Environment (Blue -> Green or Green -> Blue)')
+        choice(choices: ['blue'], description: 'Current Environment:', name: 'CURRENT_ENV')
     }
 
     environment {
@@ -276,7 +277,7 @@ private def updatePropertiesCurrentEnv(env, params){
         parameters([
             booleanParam(defaultValue: false, description: 'Switch traffic between Blue and Green Environment (Blue -> Green or Green -> Blue).', name: 'SWITCH_TRAFFIC', value: params.SWITCH_TRAFFIC),
             booleanParam(defaultValue: false, description: 'Rollback deployment between Blue and Green Environment (Blue -> Green or Green -> Blue).', name: 'ROLLBACK', value: params.ROLLBACK),
-            string(name: 'CURRENT_ENV', value: env, defaultValue: env, description: 'Current Environment')
+            choice(choices: [env], description: 'Current Environment:', name: 'CURRENT_ENV')
         ])
     ])
 }
