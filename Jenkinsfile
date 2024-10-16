@@ -2,7 +2,8 @@ pipeline {
     agent any
 
     parameters {
-        booleanParam(name: 'SWITCH_TRAFFIC', defaultValue: false, description: 'Switch traffic between Blue and Green')
+        booleanParam(name: 'SWITCH_TRAFFIC', defaultValue: false, description: 'Switch traffic between Blue and Green Environment')
+        booleanParam(name: 'ROLLBACK', defaultValue: false, description: 'Rollback deployment between Blue and Green Environment')
     }
 
     environment {
@@ -56,7 +57,7 @@ pipeline {
 
                         dir(repoName) {
                             def hasChanges = '0'
-                            if (fileExists('.git')) {
+                            if (fileExists('.git') && !params.ROLLBACK) {
                                 withCredentials([gitUsernamePassword(credentialsId: 'Git', gitToolName: 'Default')]) {
                                     sh "git fetch origin ${repoBranch}"
                                     def localCommit = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
@@ -71,7 +72,7 @@ pipeline {
                                         hasChanges = '0'
                                     }
                                 }
-                            } else {
+                            } else if(!fileExists('.git')){
                                 echo "Cloning repository: ${repoName}"
                                 git branch: repoBranch, url: repoUrl, credentialsId: 'Git'
                                 hasChanges = '1'
@@ -79,7 +80,7 @@ pipeline {
 
                             parallelStages[repoName] = {
                                 if(!isDeployedToKubernetes(repoName, repoEnv) || (env."${repoName}_HAS_CHANGES" == 'true' || hasChanges == '1') || 
-                                    (params.SWITCH_TRAFFIC != true || repoEnv == 'green')) {
+                                    (params.SWITCH_TRAFFIC != true || repoEnv == 'green') && !params.ROLLBACK) {
                                     stage("Building ${repoName} on ${repoEnv}") {
                                         script {
                                             def envVars = []
@@ -123,7 +124,7 @@ pipeline {
                                 } else {
                                     echo "No changes detected in ${repoName}. Skipping build."
                                 }
-                                if (params.SWITCH_TRAFFIC != true || repoEnv == 'green' || !isDeployedToKubernetes(repoName, repoEnv)) {
+                                if (params.SWITCH_TRAFFIC != true || repoEnv == 'green' || !isDeployedToKubernetes(repoName, repoEnv)  && !params.ROLLBACK) {
                                     stage("Deploying ${repoName} to Kubernetes on ${repoEnv}") {
                                         script {
                                             dir(repoName) {
@@ -163,7 +164,7 @@ pipeline {
                                         }
                                     }
                                 }
-                                if (params.SWITCH_TRAFFIC == true){
+                                if (params.SWITCH_TRAFFIC == true) {
                                     stage("Switch Traffic Between Blue & Green Environment for ${repoName}") {
                                         script {
                                             dir(repoName) {
@@ -176,6 +177,23 @@ pipeline {
                                                     sh "echo ${deployEnv} > DEPLOY_ENV"
                                                     sh "echo ${deployEnv} > ../DEPLOY_ENV"
                                                     echo "Traffic switched to ${deployEnv} for ${repoName}"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if (params.ROLLBACK == true) {
+                                    stage("Rollback deployment between Blue and Green Environment for ${repoName}") {
+                                        script {
+                                            dir(repoName) {
+                                                def deployEnv = getActiveDeployEnvironment(params.ROLLBACK)
+                                                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                                                    echo "Rollback deployment to ${deployEnv} for ${repoName}"
+                                                    sh """
+                                                        kubectl patch service ${repoName}-service -n ${repoName} -p '{"spec":{"selector":{"app":"${repoName}-${deployEnv}", "version":"${deployEnv}"}}}'
+                                                    """
+                                                    sh "echo ${deployEnv} > DEPLOY_ENV"
+                                                    sh "echo ${deployEnv} > ../DEPLOY_ENV"
                                                 }
                                             }
                                         }
