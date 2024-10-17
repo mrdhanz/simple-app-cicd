@@ -4,7 +4,7 @@ pipeline {
     parameters {
         choice(name: 'CURRENT_ENV', choices: ['blue'], description: 'Current Environment:')
         booleanParam(name: 'SWITCH_TRAFFIC', defaultValue: false, description: 'Switch traffic between Blue and Green Environment (Blue -> Green or Green -> Blue). \nNote: This will update version & switch the traffic between the two environments.')
-        booleanParam(name: 'ROLLBACK', defaultValue: false, description: 'Rollback deployment between Blue and Green Environment (Blue -> Green or Green -> Blue). \nNote: This will only 1x rollback the deployment to the previous environment.')
+        booleanParam(name: 'ROLLBACK', defaultValue: false, description: 'Rollback deployment between Blue and Green Environment (Blue -> Green or Green -> Blue). \nNote: This will only 1x rollback the deployment to the previous environment. If the deployment have new version this will show again.')
     }
 
     environment {
@@ -27,6 +27,16 @@ pipeline {
         stage('Pull Environment Repositories') {
             steps {
                 git branch: 'master', url: 'https://github.com/mrdhanz/simple-app-cicd.git', credentialsId: 'Git'
+            }
+        }
+
+        stage('Check Build Parameters') {
+            steps {
+                script {
+                    if (params.SWITCH_TRAFFIC == true && params.ROLLBACK == true) {
+                        error('Cannot switch traffic and rollback at the same time. Please select only one option.')
+                    }
+                }
             }
         }
 
@@ -101,22 +111,31 @@ pipeline {
                                                 dir(repoName) {
                                                     def deployEnv = getActiveDeployEnvironment(params.SWITCH_TRAFFIC)
                                                     env."${repoName}_DEPLOY_ENV" = deployEnv
-                                                    echo "Installing dependencies for ${repoName}"
-                                                    sh "${installCommand}"
-                                                    echo "Building project for ${repoName}"
-                                                    sh "${buildCommand}"
+                                                    if (installCommand != null || installCommand != '') {
+                                                        echo "Installing dependencies for ${repoName}"
+                                                        sh "${installCommand}"
+                                                    }
+                                                    if (buildCommand != null || buildCommand != '') {
+                                                        echo "Building project for ${repoName}"
+                                                        sh "${buildCommand}"
+                                                    }
                                                     // add key value or replace value to env file
                                                     if (environment.ENV_FILE != null) {
                                                         sh "printf '\\nBUILD_VERSION=${deployEnv}-${env.BUILD_ID}' >> .env"
                                                     }
-                                                    echo "Building Docker image for ${repoName}"
-                                                    sh "docker build -t ${dockerImage}:${deployEnv}-${env.BUILD_ID} -f ${dockerFile} ."
+                                                    if (dockerFile != null || dockerFile != '') {
+                                                        if(!fileExists(dockerFile)){
+                                                            error("Dockerfile not found in ${repoName}")
+                                                        }
+                                                        echo "Building Docker image for ${repoName}"
+                                                        sh "docker build -t ${dockerImage}:${deployEnv}-${env.BUILD_ID} -f ${dockerFile} ."
 
-                                                    withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
-                                                        echo "Pushing Docker image for ${repoName} to Docker Hub"
-                                                        sh "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin"
-                                                        sh "docker push ${dockerImage}:${deployEnv}-${env.BUILD_ID}"
-                                                        sh "docker logout"
+                                                        withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+                                                            echo "Pushing Docker image for ${repoName} to Docker Hub"
+                                                            sh "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin"
+                                                            sh "docker push ${dockerImage}:${deployEnv}-${env.BUILD_ID}"
+                                                            sh "docker logout"
+                                                        }
                                                     }
                                                 }
                                             }
@@ -278,7 +297,7 @@ private def updatePropertiesCurrentEnv(env, params){
         parameters([
             choice(choices: [env], description: 'Current Environment:', name: 'CURRENT_ENV'),
             booleanParam(defaultValue: params.SWITCH_TRAFFIC, description: 'Switch traffic between Blue and Green Environment (Blue -> Green or Green -> Blue). \nNote: This will update version & switch the traffic between the two environments.', name: 'SWITCH_TRAFFIC'),
-            booleanParam(defaultValue: params.ROLLBACK, description: 'Rollback deployment between Blue and Green Environment (Blue -> Green or Green -> Blue). \nNote: This will only 1x rollback the deployment to the previous environment.', name: 'ROLLBACK'),
+            booleanParam(defaultValue: false, description: 'Rollback deployment between Blue and Green Environment (Blue -> Green or Green -> Blue). \nNote: This will only 1x rollback the deployment to the previous environment. If the deployment have new version this will show again.', name: 'ROLLBACK'),
         ])
     ])
 }
@@ -287,7 +306,7 @@ private def hideRollbackProps(env, params){
     properties([
         parameters([
             choice(choices: [env], description: 'Current Environment:', name: 'CURRENT_ENV'),
-            booleanParam(defaultValue: params.SWITCH_TRAFFIC, description: 'Switch traffic between Blue and Green Environment (Blue -> Green or Green -> Blue). \nNote: This will update version & switch the traffic between the two environments.', name: 'SWITCH_TRAFFIC'),
+            booleanParam(defaultValue: false, description: 'Switch traffic between Blue and Green Environment (Blue -> Green or Green -> Blue). \nNote: This will update version & switch the traffic between the two environments.', name: 'SWITCH_TRAFFIC'),
         ])
     ])
 }
